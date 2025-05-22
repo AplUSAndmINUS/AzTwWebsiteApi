@@ -41,3 +41,26 @@ namespace AzTwWebsiteApi.Functions.Blog
 
   // Class implementation and methods
 }
+
+    public class GetBlogSingleImageFunction
+    {
+        private readonly ILogger<GetBlogSingleImageFunction> _logger;
+
+        public GetBlogSingleImageFunction(ILogger<GetBlogSingleImageFunction> logger)
+        {
+            _logger = logger;
+        }
+
+        [FunctionName("GetBlogSingleImage")]
+        public async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/image/{id}")] HttpRequest req,
+            string id)
+        {
+            _logger.LogFunctionStart(Constants.Modules.Blog, "GetBlogSingleImage");
+
+            // Return 404 Not Found for now
+            _logger.LogFunctionComplete(Constants.Modules.Blog, "GetBlogSingleImage");
+            return new NotFoundResult();
+        }
+    }
+}
