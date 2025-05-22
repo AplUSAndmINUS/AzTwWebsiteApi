@@ -3,7 +3,7 @@ name: Azure Function App Production Deployment
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 env:
@@ -70,8 +70,173 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --settings \
               "StorageAccountUrl=https://${{ secrets.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
-              "AZURE_FUNCTIONS_ENVIRONMENT=Production" \
+              "AZURE_FUNCTIONS_ENVIRONMENT=production" \
               "APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}"
+
+    - name: 'Wait for Deployment Stabilization'
+      run: sleep 30
+
+    - name: 'Run Smoke Tests on Staging Slot'
+      id: smoke_tests
+      shell: bash
+      env:
+        MAX_RESPONSE_TIME: 2000
+        FUNCTION_APP_URL: https://${{ env.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net
+      run: |
+        # Test Blog Posts endpoint
+        echo "Testing Blog Posts endpoint..."
+        response=$(curl -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL/api/blog/posts")
+        status_code=$(echo "$response" | tail -n2 | head -n1)
+        response_time=$(echo "$response" | tail -n1)
+        response_time_ms=$(echo "$response_time * 1000" | bc)
+        
+        if [ "$status_code" != "200" ]; then
+          echo "::error::Blog Posts endpoint failed with status $status_code"
+          exit 1
+        fi
+        
+        if [ $(echo "$response_time_ms > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
+          echo "::warning::Blog Posts response time ($response_time_ms ms) exceeded threshold"
+        fi
+        
+        # Test Blog Images endpoint
+        echo "Testing Blog Images endpoint..."
+        for i in {1..3}; do
+          response=$(curl -s -w "\n%{http_code}" "$FUNCTION_APP_URL/api/blog/images/test-image")
+          status_code=$(echo "$response" | tail -n1)
+          if [ "$status_code" = "200" ] || [ "$status_code" = "404" ]; then
+            break
+          fi
+          echo "Attempt $i: Status $status_code"
+          [ $i -lt 3 ] && sleep 5
+        done
+        
+        if [ "$status_code" != "200" ] && [ "$status_code" != "404" ]; then
+          echo "::error::Blog Images endpoint failed with status $status_code"
+          exit 1
+        fi
+        
+        # Test Events endpoint
+        echo "Testing Events endpoint..."
+        response=$(curl -s -w "\n%{http_code}" "$FUNCTION_APP_URL/api/events")
+        status_code=$(echo "$response" | tail -n1)
+        
+        if [ "$status_code" != "200" ]; then
+          echo "::error::Events endpoint failed with status $status_code"
+          exit 1
+        fi
+        
+        # Log test results to App Insights
+        echo "Logging test results to App Insights..."
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Convert response time to milliseconds
+        BLOG_TIME_MS=$(echo "$BLOG_TIME * 1000" | bc)
+        
+        if [ "$BLOG_RESPONSE" != "200" ]; then
+          echo "Blog Posts endpoint failed with status $BLOG_RESPONSE"
+          exit 1
+        fi
+        
+        if [ $(echo "$BLOG_TIME_MS > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
+          echo "Blog Posts endpoint response time ($BLOG_TIME_MS ms) exceeded threshold ($MAX_RESPONSE_TIME ms)"
+          exit 1
+        fi
+        
+        # Validate JSON response
+        if ! echo "$BLOG_CONTENT" | jq . >/dev/null 2>&1; then
+          echo "Blog Posts endpoint returned invalid JSON"
+          exit 1
+        fi
+        
+        # Validate response has expected fields
+        if [ $(echo "$BLOG_CONTENT" | jq 'if type=="array" then true else false end') != "true" ]; then
+          echo "Blog Posts endpoint did not return an array"
+          exit 1
+        fi
+        
+        # Test Blog Images endpoint
+        echo "Testing Blog Images endpoint..."
+        MAX_RETRIES=3
+        RETRY_COUNT=0
+        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+          IMAGE_RESULT=$(curl -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL/api/blog/images/test-image")
+          IMAGE_RESPONSE=$(echo "$IMAGE_RESULT" | tail -n2 | head -n1)
+          IMAGE_TIME=$(echo "$IMAGE_RESULT" | tail -n1)
+          IMAGE_TIME_MS=$(echo "$IMAGE_TIME * 1000" | bc)
+          
+          if [ "$IMAGE_RESPONSE" = "200" ] || [ "$IMAGE_RESPONSE" = "404" ]; then
+            if [ $(echo "$IMAGE_TIME_MS > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
+              echo "Blog Images endpoint response time ($IMAGE_TIME_MS ms) exceeded threshold ($MAX_RESPONSE_TIME ms)"
+              exit 1
+            fi
+            break
+          fi
+          RETRY_COUNT=$((RETRY_COUNT+1))
+          echo "Retry $RETRY_COUNT: Blog Images endpoint returned $IMAGE_RESPONSE"
+          sleep 5
+        done
+        
+        if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+          echo "Blog Images endpoint failed after $MAX_RETRIES retries"
+          exit 1
+        fi
+        
+        # Test Events endpoint with data validation
+        echo "Testing Events endpoint..."
+        EVENTS_RESULT=$(curl -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL/api/events")
+        EVENTS_RESPONSE=$(echo "$EVENTS_RESULT" | tail -n2 | head -n1)
+        EVENTS_TIME=$(echo "$EVENTS_RESULT" | tail -n1)
+        EVENTS_CONTENT=$(echo "$EVENTS_RESULT" | head -n-2)
+        
+        EVENTS_TIME_MS=$(echo "$EVENTS_TIME * 1000" | bc)
+        
+        if [ "$EVENTS_RESPONSE" != "200" ]; then
+          echo "Events endpoint failed with status $EVENTS_RESPONSE"
+          exit 1
+        fi
+        
+        if [ $(echo "$EVENTS_TIME_MS > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
+          echo "Events endpoint response time ($EVENTS_TIME_MS ms) exceeded threshold ($MAX_RESPONSE_TIME ms)"
+          exit 1
+        fi
+        
+        # Validate JSON response
+        if ! echo "$EVENTS_CONTENT" | jq . >/dev/null 2>&1; then
+          echo "Events endpoint returned invalid JSON"
+          exit 1
+        fi
+        
+        # Log test results to App Insights
+        echo "Logging test results to App Insights..."
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Send results to App Insights
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -H "x-api-key: ${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}" \
+          https://dc.services.visualstudio.com/v2/track \
+          -d "{
+            \"name\": \"Smoke Tests Results\",
+            \"time\": \"$TIMESTAMP\",
+            \"iKey\": \"${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}\",
+            \"data\": {
+              \"baseType\": \"CustomEvent\",
+              \"baseData\": {
+                \"ver\": \"2.0\",
+                \"name\": \"SmokeTestResults\",
+                \"properties\": {
+                  \"blogPostsResponseTime\": \"$BLOG_TIME_MS\",
+                  \"blogImagesResponseTime\": \"$IMAGE_TIME_MS\",
+                  \"eventsResponseTime\": \"$EVENTS_TIME_MS\",
+                  \"environment\": \"production\",
+                  \"slot\": \"staging\"
+                }
+              }
+            }
+          }"
+        
+        echo "All smoke tests passed successfully with performance validation!"
 
     - name: 'Swap Staging Slot to Production'
       uses: azure/CLI@v1

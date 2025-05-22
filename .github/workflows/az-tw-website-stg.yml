@@ -1,20 +1,20 @@
-name: Azure Function App Dev Deployment
+name: Azure Function App Staging Deployment
 
 on:
   push:
     branches:
-      - development
+      - staging
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: az-tw-website-dev
+  AZURE_FUNCTIONAPP_NAME: az-tw-website-stg
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   DOTNET_VERSION: '8.0.x'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: development
+    environment: staging
     steps:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v4
@@ -36,13 +36,14 @@ jobs:
       run: |
         dotnet test
 
-    - name: 'Deploy to Azure Function App'
+    - name: 'Deploy to Azure Function App Staging Slot'
       uses: Azure/functions-action@v1
       id: fa
       with:
         app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
         package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+        slot-name: 'staging'
 
     - name: 'Configure Managed Identity and RBAC'
       uses: azure/CLI@v1
@@ -69,7 +70,7 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --settings \
               "StorageAccountUrl=https://${{ secrets.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
-              "AZURE_FUNCTIONS_ENVIRONMENT=Development" \
+              "AZURE_FUNCTIONS_ENVIRONMENT=staging" \
               "APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}"
 
     - name: 'Wait for Deployment Stabilization'
@@ -79,39 +80,56 @@ jobs:
       id: smoke_tests
       shell: bash
       env:
-        MAX_RESPONSE_TIME: 5000  # More lenient timeout for development
-        FUNCTION_APP_URL: https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net
+        MAX_RESPONSE_TIME: 3000  # 3 seconds threshold for staging
+        FUNCTION_APP_URL: https://${{ env.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net
       run: |
-        # Function to test endpoint with retries
+        # Helper function for endpoint testing
         test_endpoint() {
           local endpoint=$1
           local name=$2
-          local max_retries=${3:-3}
-          local timeout=${4:-30}
+          local validate_json=${3:-false}
+          local max_retries=${4:-3}
           
           echo "::group::Testing $name endpoint"
           
           for i in $(seq 1 $max_retries); do
-            echo "Attempt $i of $max_retries..."
+            echo "Attempt $i of $max_retries for $name..."
             
-            # Full response with headers for debugging
-            echo "Detailed curl output:"
-            response=$(curl -v -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL$endpoint" 2>&1)
-            echo "$response"
-            
+            response=$(curl -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL$endpoint")
             status_code=$(echo "$response" | tail -n2 | head -n1)
             response_time=$(echo "$response" | tail -n1)
             response_time_ms=$(echo "$response_time * 1000" | bc)
+            content=$(echo "$response" | head -n-2)
             
             echo "Status Code: $status_code"
             echo "Response Time: ${response_time_ms}ms"
             
-            # Check for success or acceptable status
+            # Check for success conditions
             if [ "$status_code" = "200" ] || [ "$status_code" = "404" ]; then
-              # Performance warning for development feedback
+              # Validate JSON if required
+              if [ "$validate_json" = "true" ] && [ "$status_code" = "200" ]; then
+                if ! echo "$content" | jq . >/dev/null 2>&1; then
+                  echo "::error::$name endpoint returned invalid JSON"
+                  echo "$content"
+                  echo "::endgroup::"
+                  return 1
+                fi
+                
+                # For array responses, validate structure
+                if [[ "$endpoint" == "/api/blog/posts" || "$endpoint" == "/api/events" ]]; then
+                  if [ $(echo "$content" | jq 'if type=="array" then true else false end') != "true" ]; then
+                    echo "::error::$name endpoint did not return an array"
+                    echo "::endgroup::"
+                    return 1
+                  fi
+                fi
+              fi
+              
+              # Performance warning
               if [ $(echo "$response_time_ms > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
                 echo "::warning::$name response time (${response_time_ms}ms) exceeded threshold (${MAX_RESPONSE_TIME}ms)"
               fi
+              
               echo "::endgroup::"
               return 0
             fi
@@ -127,22 +145,57 @@ jobs:
           return 1
         }
         
-        # Execute tests with the helper function
-        echo "Starting endpoint tests..."
+        # Execute tests
+        echo "Starting endpoint tests in staging environment..."
         
-        # Test Blog Posts endpoint
-        if ! test_endpoint "/api/blog/posts" "Blog Posts"; then
+        # Test Blog Posts endpoint with JSON validation
+        if ! test_endpoint "/api/blog/posts" "Blog Posts" true 3; then
           exit 1
         fi
         
-        # Test Blog Images endpoint
-        if ! test_endpoint "/api/blog/images/test-image" "Blog Images" 5; then
+        # Test Blog Images endpoint with extra retries
+        if ! test_endpoint "/api/blog/images/test-image" "Blog Images" false 4; then
           exit 1
         fi
         
-        # Test Events endpoint
-        if ! test_endpoint "/api/events" "Events" 3 45; then
+        # Test Events endpoint with JSON validation
+        if ! test_endpoint "/api/events" "Events" true 3; then
           exit 1
         fi
         
-        echo "::notice::All smoke tests passed successfully!"
+        # Send results to App Insights
+        echo "Logging test results to App Insights..."
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -H "x-api-key: ${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}" \
+          https://dc.services.visualstudio.com/v2/track \
+          -d "{
+            \"name\": \"Smoke Tests Results\",
+            \"time\": \"$TIMESTAMP\",
+            \"iKey\": \"${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}\",
+            \"data\": {
+              \"baseType\": \"CustomEvent\",
+              \"baseData\": {
+                \"ver\": \"2.0\",
+                \"name\": \"StagingSmokeTestResults\",
+                \"properties\": {
+                  \"environment\": \"staging\",
+                  \"slot\": \"staging\"
+                }
+              }
+            }
+          }"
+        
+        echo "::notice::All smoke tests passed successfully in staging environment!"
+
+    - name: 'Swap Testing Slot to Staging'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az functionapp deployment slot swap \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --slot staging \
+            --target-slot staging
