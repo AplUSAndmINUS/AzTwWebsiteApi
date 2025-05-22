@@ -1,20 +1,20 @@
-name: Azure Function App Staging Deployment
+name: Azure Function App Test Deployment
 
 on:
   push:
     branches:
-      - staging
+      - test
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: az-tw-website-stg
+  AZURE_FUNCTIONAPP_NAME: az-tw-website-tst
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   DOTNET_VERSION: '8.0.x'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: staging
+    environment: test
     steps:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v4
@@ -55,11 +55,16 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query principalId --output tsv)
 
-          # Assign RBAC role to the Function App's managed identity for blob storage
+          # Assign RBAC roles to the Function App's managed identity for storage
           az role assignment create \
             --assignee $identity \
             --role "Storage Blob Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AZURE_RESOURCE_GROUP }}/providers/Microsoft.Storage/storageAccounts/${{ secrets.STORAGE_ACCOUNT_NAME }}"
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/az-tw-website-storage/providers/Microsoft.Storage/storageAccounts/aztwwebsitestorage"
+
+          az role assignment create \
+            --assignee $identity \
+            --role "Storage Table Data Contributor" \
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/az-tw-website-storage/providers/Microsoft.Storage/storageAccounts/aztwwebsitestorage"
 
     - name: 'Configure App Settings'
       uses: azure/CLI@v1
@@ -69,8 +74,12 @@ jobs:
             --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --settings \
-              "StorageAccountUrl=https://${{ secrets.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
-              "AZURE_FUNCTIONS_ENVIRONMENT=staging" \
+              "BlogStorageUrl=https://aztwwebsitestorage.blob.core.windows.net" \
+              "StorageTableEndpoint=https://aztwwebsitestorage.table.core.windows.net" \
+              "BlogTableName=mockblog" \
+              "BlogCommentsTableName=mockblogcomments" \
+              "BlogImagesContainer=mock-blog-images" \
+              "AZURE_FUNCTIONS_ENVIRONMENT=Test" \
               "APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}"
 
     - name: 'Wait for Deployment Stabilization'
@@ -80,8 +89,8 @@ jobs:
       id: smoke_tests
       shell: bash
       env:
-        MAX_RESPONSE_TIME: 3000  # 3 seconds threshold for staging
-        FUNCTION_APP_URL: https://${{ env.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net
+        MAX_RESPONSE_TIME: 4000  # 4 seconds threshold for test environment
+        FUNCTION_APP_URL: https://az-tw-website-tst.azurewebsites.net
       run: |
         # Helper function for endpoint testing
         test_endpoint() {
@@ -169,12 +178,12 @@ jobs:
         
         curl -X POST \
           -H "Content-Type: application/json" \
-          -H "x-api-key: ${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}" \
+          -H "x-api-key: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
           https://dc.services.visualstudio.com/v2/track \
           -d "{
             \"name\": \"Smoke Tests Results\",
             \"time\": \"$TIMESTAMP\",
-            \"iKey\": \"${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}\",
+            \"iKey\": \"${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}\",
             \"data\": {
               \"baseType\": \"CustomEvent\",
               \"baseData\": {
@@ -190,12 +199,12 @@ jobs:
         
         echo "::notice::All smoke tests passed successfully in staging environment!"
 
-    - name: 'Swap Testing Slot to Staging'
+    - name: 'Swap Test Slot to Production'
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az functionapp deployment slot swap \
             --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --slot staging \
-            --target-slot staging
+            --slot test \
+            --target-slot production
