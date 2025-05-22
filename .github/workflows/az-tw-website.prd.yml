@@ -3,7 +3,7 @@ name: Azure Function App Production Deployment
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 env:
