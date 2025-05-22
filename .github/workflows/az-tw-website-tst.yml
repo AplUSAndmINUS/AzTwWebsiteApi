@@ -1,0 +1,84 @@
+name: Azure Function App Test Deployment
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: az-tw-website-tst
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 'Resolve Project Dependencies Using Dotnet'
+      shell: bash
+      run: |
+        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        dotnet build --configuration Release --output ./output
+        popd
+
+    - name: 'Run Unit Tests'
+      shell: bash
+      run: |
+        dotnet test
+
+    - name: 'Deploy to Azure Function App Test Slot'
+      uses: Azure/functions-action@v1
+      id: fa
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+        slot-name: 'staging'
+
+    - name: 'Configure Managed Identity and RBAC'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          # Get the Function App's managed identity
+          identity=$(az functionapp identity assign \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query principalId --output tsv)
+
+          # Assign RBAC role to the Function App's managed identity for blob storage
+          az role assignment create \
+            --assignee $identity \
+            --role "Storage Blob Data Contributor" \
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AZURE_RESOURCE_GROUP }}/providers/Microsoft.Storage/storageAccounts/${{ secrets.STORAGE_ACCOUNT_NAME }}"
+
+    - name: 'Configure App Settings'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az functionapp config appsettings set \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              "StorageAccountUrl=https://${{ secrets.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
+              "AZURE_FUNCTIONS_ENVIRONMENT=Test" \
+              "APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}"
+
+    - name: 'Swap Testing Slot to Test'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az functionapp deployment slot swap \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --slot testing \
+            --target-slot testing

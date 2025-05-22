@@ -1,6 +1,6 @@
 using System;
 
-namespace BlogReaderFunction.Models.Events
+namespace AzTwWebsiteApi.Models.Events
 {
     public class Event
     {

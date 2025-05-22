@@ -1,6 +1,6 @@
 using System;
 
-namespace BlogReaderFunction.Models.Blog
+namespace AzTwWebsiteApi.Models.Blog
 {
     public class BlogImage
     {

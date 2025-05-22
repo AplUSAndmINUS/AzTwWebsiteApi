@@ -1,6 +1,6 @@
 using System;
 
-namespace BlogReaderFunction.Models.Portfolio
+namespace AzTwWebsiteApi.Models.Portfolio
 {
     public class PortfolioPost
     {

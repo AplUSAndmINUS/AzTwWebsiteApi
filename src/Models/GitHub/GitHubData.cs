@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace BlogReaderFunction.Models.GitHub
+namespace AzTwWebsiteApi.Models.GitHub
 {
     public class GitHubData
     {

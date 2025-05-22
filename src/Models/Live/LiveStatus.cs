@@ -1,6 +1,6 @@
 using System;
 
-namespace BlogReaderFunction.Models.Live
+namespace AzTwWebsiteApi.Models.Live
 {
     public class LiveStatus
     {

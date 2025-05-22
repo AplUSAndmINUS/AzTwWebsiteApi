@@ -31,6 +31,7 @@ bld/
 
 # Azure Functions
 local.settings.json
+local.settings.*
 bin/
 obj/
 

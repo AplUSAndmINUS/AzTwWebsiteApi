@@ -1,6 +1,6 @@
 using System;
 
-namespace BlogReaderFunction.Models.Video
+namespace AzTwWebsiteApi.Models.Video
 {
     public class Video
     {
