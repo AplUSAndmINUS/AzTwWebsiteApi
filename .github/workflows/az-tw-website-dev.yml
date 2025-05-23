@@ -43,7 +43,7 @@ jobs:
         
         # Build and publish each function project
         for func in ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/*; do
-          if [ -f "$func/*.csproj" ]; then
+          if [ -f "$func"/*.csproj ]; then
             echo "Publishing function: $func"
             dotnet publish "$func" \
               --configuration Release \
@@ -100,14 +100,36 @@ jobs:
             --failed-request-tracing true \
             --web-server-logging filesystem
 
+    - name: 'Debug Package Contents'
+      shell: bash
+      run: |
+        echo "Listing output directory contents:"
+        ls -la ./output
+        echo "Verifying host.json exists:"
+        cat ./output/host.json
+        echo "Checking function.json files:"
+        find ./output -name "function.json" -type f -exec echo {} \; -exec cat {} \;
+
+    - name: 'Verify Build Output'
+      shell: bash
+      run: |
+        echo "📦 Output Directory Structure:"
+        tree ./output
+        
+        echo "📄 Checking host.json:"
+        cat ./output/host.json
+        
+        echo "🔍 Verifying Function Files:"
+        find ./output -name "*.json" -type f -exec sh -c 'echo "\n=== $1 ==="; cat "$1"' sh {} \;
+
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
-      id: fa
       with:
         app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
         package: ${{ env.OUTPUT_PATH }}
-        respect-pom-xml: false
         scm-do-build-during-deployment: false
+        enable-oryx-build: false
+        respect-funcignore: false
 
     - name: 'Check Function App Logs'
       if: always()
@@ -124,3 +146,27 @@ jobs:
           az webapp log tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
+
+    - name: 'Check Deployment Status'
+      if: always()
+      shell: bash
+      run: |
+        echo "📊 Checking Function App Status"
+        az functionapp show \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "{State:state,Status:status}"
+
+        echo "📑 Fetching Recent Logs"
+        az functionapp log tail \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --limit 50
+
+    - name: 'Get Deployment Logs'
+      if: failure()
+      shell: bash
+      run: |
+        echo "Fetching Kudu logs..."
+        az webapp log download --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} --log-file kudu.zip
+        unzip -p kudu.zip
