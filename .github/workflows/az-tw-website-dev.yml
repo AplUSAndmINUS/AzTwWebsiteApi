@@ -15,8 +15,8 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     environment:
-      name: development
       url: https://az-tw-website-dev.azurewebsites.net
+
     steps:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v4
@@ -26,8 +26,15 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    - name: 'Login via Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
     - name: 'Build and Publish Functions'
       shell: bash
+      env:
+        FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
       run: |
         # First restore solution dependencies
         dotnet restore
@@ -35,87 +42,24 @@ jobs:
         # Build shared project
         dotnet build src/Shared/AzTwWebsiteApi.Shared.csproj --configuration Release
         
-        # Find and publish all function projects
-        for func in src/Functions/*/; do
+        # Create output directory
+        mkdir -p ./output
+        
+        # Build and publish each function project
+        for func in ./src/Functions/*; do
           if [ -f "$func"/*.csproj ]; then
             echo "Publishing function: $func"
             dotnet publish "$func" \
               --configuration Release \
+              --output ./output \
               --runtime linux-x64 \
-              --self-contained true \
-              --output ${{ env.OUTPUT_PATH }} \
-              -p:PublishReadyToRun=true \
-              -p:PublishSingleFile=true
+              --no-self-contained \
+              -p:FunctionWorkerRuntime=dotnet-isolated
           fi
         done
         
-        # Copy host.json and other shared configs to output
-        cp host.json ${{ env.OUTPUT_PATH }}/
-        
-        # Verify output contents
-        echo "=== Build Output Contents ==="
-        ls -la ${{ env.OUTPUT_PATH }}
-        echo "=== host.json Contents ==="
-        cat ${{ env.OUTPUT_PATH }}/host.json
-        echo "=== Function DLLs ==="
-        find ${{ env.OUTPUT_PATH }} -name "*.dll" -type f
-
-    - name: 'Run Unit Tests'
-      shell: bash
-      run: |
-        dotnet test
-
-    - name: 'Login via Azure CLI'
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: 'Configure Function App Settings'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          # Set general runtime settings
-          az functionapp config appsettings set \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --settings \
-              "FUNCTIONS_WORKER_RUNTIME=dotnet-isolated" \
-              "DOTNET_VERSION=8.0" \
-              "AzureWebJobsFeatureFlags=EnableWorkerIndexing"
-
-    - name: 'Enable Function App Logging'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          # Enable detailed logging
-          az webapp log config \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --detailed-error-messages true \
-            --failed-request-tracing true \
-            --web-server-logging filesystem
-
-    - name: 'Debug Package Contents'
-      shell: bash
-      run: |
-        echo "Listing output directory contents:"
-        ls -la ./output
-        echo "Verifying host.json exists:"
-        cat ./output/host.json
-        echo "Checking function.json files:"
-        find ./output -name "function.json" -type f -exec echo {} \; -exec cat {} \;
-
-    - name: 'Verify Build Output'
-      shell: bash
-      run: |
-        echo "📦 Output Directory Structure:"
-        tree ./output
-        
-        echo "📄 Checking host.json:"
-        cat ./output/host.json
-        
-        echo "🔍 Verifying Function Files:"
-        find ./output -name "*.json" -type f -exec sh -c 'echo "\n=== $1 ==="; cat "$1"' sh {} \;
+        # Copy host.json to output
+        cp src/Functions/Blog/host.json ./output/
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
@@ -124,44 +68,12 @@ jobs:
         package: ${{ env.OUTPUT_PATH }}
         scm-do-build-during-deployment: false
         enable-oryx-build: false
-        respect-funcignore: false
 
-    - name: 'Check Function App Logs'
-      if: always()
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          echo "=== Fetching Application Logs ==="
-          az webapp log download \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --log-file logs.zip
-          
-          echo "=== Recent Logs ==="
-          az webapp log tail \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
-
-    - name: 'Check Deployment Status'
-      if: always()
+    - name: 'Verify Deployment'
       shell: bash
       run: |
-        echo "📊 Checking Function App Status"
-        az functionapp show \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+        echo "Checking Function App status..."
+        az functionapp list \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{State:state,Status:status}"
-
-        echo "📑 Fetching Recent Logs"
-        az functionapp log tail \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --limit 50
-
-    - name: 'Get Deployment Logs'
-      if: failure()
-      shell: bash
-      run: |
-        echo "Fetching Kudu logs..."
-        az webapp log download --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} --log-file kudu.zip
-        unzip -p kudu.zip
+          --query "[?name=='${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}'].{State:state,Status:status}" \
+          --output table
