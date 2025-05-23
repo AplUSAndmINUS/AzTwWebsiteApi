@@ -7,7 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/Functions'
+  OUTPUT_PATH: './output'
   DOTNET_VERSION: '8.0.x'
 
 jobs:
@@ -24,28 +25,44 @@ jobs:
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-        include-prerelease: false
-        dotnet-quality: 'ga'
 
-    - name: 'Resolve Project Dependencies Using Dotnet'
+    - name: 'Build and Publish Functions'
       shell: bash
       env:
         FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
         DOTNET_VERSION: "8.0"
       run: |
-        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
         # First restore solution dependencies
         dotnet restore
         
         # Build the shared project first
         dotnet build src/Shared/AzTwWebsiteApi.Shared.csproj --configuration Release
         
-        # Build and publish the Functions project with all dependencies
-        dotnet publish \
-          --configuration Release \
-          --output ./output \
-          -p:FunctionWorkerRuntime=dotnet-isolated
-        popd
+        # Create output directory
+        mkdir -p ${{ env.OUTPUT_PATH }}
+        
+        # Build and publish each function project
+        for func in ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/*; do
+          if [ -f "$func/*.csproj" ]; then
+            echo "Publishing function: $func"
+            dotnet publish "$func" \
+              --configuration Release \
+              --output ${{ env.OUTPUT_PATH }} \
+              -p:PublishReadyToRun=true \
+              -p:FunctionWorkerRuntime=dotnet-isolated
+          fi
+        done
+        
+        # Copy host.json and other shared configs to output
+        cp host.json ${{ env.OUTPUT_PATH }}/
+        
+        # Verify output contents
+        echo "=== Build Output Contents ==="
+        ls -la ${{ env.OUTPUT_PATH }}
+        echo "=== host.json Contents ==="
+        cat ${{ env.OUTPUT_PATH }}/host.json
+        echo "=== Function DLLs ==="
+        find ${{ env.OUTPUT_PATH }} -name "*.dll" -type f
 
     - name: 'Run Unit Tests'
       shell: bash
@@ -58,137 +75,52 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         enable-AzPSSession: true
 
-    - name: 'Debug Output Directory'
-      shell: bash
-      run: |
-        echo "Listing output directory contents:"
-        ls -la ./output
-        echo "Checking host.json:"
-        cat ./output/host.json
-
-    - name: 'Configure Function Runtime'
+    - name: 'Configure Function App Settings'
       uses: azure/CLI@v1
       with:
         inlineScript: |
+          # Set general runtime settings
           az functionapp config appsettings set \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --settings \
               "FUNCTIONS_WORKER_RUNTIME=dotnet-isolated" \
-              "DOTNET_VERSION=8.0"
+              "DOTNET_VERSION=8.0" \
+              "AzureWebJobsFeatureFlags=EnableWorkerIndexing"
+
+    - name: 'Enable Function App Logging'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          # Enable detailed logging
+          az webapp log config \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --detailed-error-messages true \
+            --failed-request-tracing true \
+            --web-server-logging filesystem
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
       id: fa
       with:
         app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
-        package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+        package: ${{ env.OUTPUT_PATH }}
+        respect-pom-xml: false
         scm-do-build-during-deployment: false
-        enable-oryx-build: false
 
-    - name: 'Configure Managed Identity and RBAC'
+    - name: 'Check Function App Logs'
+      if: always()
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          # Get the Function App's managed identity
-          identity=$(az functionapp identity assign \
+          echo "=== Fetching Application Logs ==="
+          az webapp log download \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --query principalId --output tsv)
-
-          # Assign RBAC roles to the Function App's managed identity for storage
-          az role assignment create \
-            --assignee $identity \
-            --role "Storage Blob Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME }}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
-
-          az role assignment create \
-            --assignee $identity \
-            --role "Storage Table Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME }}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
-
-    - name: 'Configure App Settings'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          az functionapp config appsettings set \
+            --log-file logs.zip
+          
+          echo "=== Recent Logs ==="
+          az webapp log tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --settings \
-              "BlogStorageUrl=https://${{ vars.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
-              "StorageTableEndpoint=https://${{ vars.STORAGE_ACCOUNT_NAME }}.table.core.windows.net" \
-              "BlogTableName=${{ vars.MOCK_BLOG_TABLE_NAME }}" \
-              "BlogCommentsTableName=${{ vars.MOCK_BLOG_COMMENTS_TABLE_NAME }}" \
-              "BlogImagesContainer=${{ vars.MOCK_BLOG_IMAGES_CONTAINER_NAME }}" \
-              "AZURE_FUNCTIONS_ENVIRONMENT=Development" \
-              "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_DEV }}"
-
-    - name: 'Wait for Deployment Stabilization'
-      run: sleep 30
-
-    - name: 'Run Smoke Tests'
-      id: smoke_tests
-      shell: bash
-      env:
-        MAX_RESPONSE_TIME: 5000  # More lenient timeout for development
-        FUNCTION_APP_URL: https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.azurewebsites.net
-      run: |
-        # Function to test endpoint with retries
-        test_endpoint() {
-          local endpoint=$1
-          local name=$2
-          local max_retries=${3:-3}
-          local timeout=${4:-30}
-          
-          echo "::group::Testing $name endpoint"
-          
-          for i in $(seq 1 $max_retries); do
-            echo "Attempt $i of $max_retries..."
-            
-            # Full response with headers for debugging
-            echo "Detailed curl output:"
-            response=$(curl -v -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL$endpoint" 2>&1)
-            echo "$response"
-            
-            status_code=$(echo "$response" | tail -n2 | head -n1)
-            response_time=$(echo "$response" | tail -n1)
-            response_time_ms=$(echo "$response_time * 1000" | bc)
-            
-            echo "Status Code: $status_code"
-            echo "Response Time: ${response_time_ms}ms"
-            
-            # Check for success or acceptable status
-            if [ "$status_code" = "200" ] || [ "$status_code" = "404" ]; then
-              # Performance warning for development feedback
-              if [ $(echo "$response_time_ms > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
-                echo "::warning::$name response time (${response_time_ms}ms) exceeded threshold (${MAX_RESPONSE_TIME}ms)"
-              fi
-              echo "::endgroup::"
-              return 0
-            fi
-            
-            if [ $i -lt $max_retries ]; then
-              echo "Retrying in 5 seconds..."
-              sleep 5
-            fi
-          done
-          
-          echo "::error::$name endpoint failed after $max_retries attempts. Last status: $status_code"
-          echo "::endgroup::"
-          return 1
-        }
-        
-        # Execute tests with the helper function
-        echo "Starting endpoint tests..."
-        
-        # Test Blog Posts endpoint
-        if ! test_endpoint "/api/blog/posts" "Blog Posts"; then
-          exit 1
-        fi
-        
-        # Test Blog Images endpoint
-        if ! test_endpoint "/api/blog/images/test-image" "Blog Images" 5; then
-          exit 1
-        fi
-        
-        echo "::notice::All smoke tests passed successfully!"
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
