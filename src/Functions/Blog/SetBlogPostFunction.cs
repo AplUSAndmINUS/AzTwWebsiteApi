@@ -4,7 +4,9 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using AzTwWebsiteApi.Utils;
+
+// Commenting out for now due to simple structure functions
+// using AzTwWebsiteApi.Utils;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
@@ -17,15 +19,28 @@ namespace AzTwWebsiteApi.Functions.Blog
             _logger = logger;
         }
 
-        [FunctionName(Constants.Functions.SetBlogPosts)]
+        [FunctionName("SetBlogPost")]
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts")] HttpRequest req)
         {
-            _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
+            _logger.LogFunctionStart("The SetBlogPost Function is starting");
+
+            _logger.LogInformation("C# HTTP trigger function processed a request.");
 
             // Return success for now
-            _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
+            _logger.LogFunctionComplete("The SetBlogPost Function has completed");
             return new OkResult();
         }
+
+        // [FunctionName(Constants.Functions.SetBlogPosts)]
+        // public async Task<IActionResult> Run(
+        //     [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts")] HttpRequest req)
+        // {
+        //     _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
+
+        //     // Return success for now
+        //     _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
+        //     return new OkResult();
+        // }
     }
 }

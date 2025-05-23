@@ -5,31 +5,34 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
-using AzTwWebsiteApi.Models.Blog;
 using AzTwWebsiteApi.Utils;
+using AzTwWebsiteApi.Models.Blog.BlogImage;
+
+// Commenting out for now due to simple structure functions
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
-    public class GetBlogImagesFunction
+  public class GetBlogImagesFunction
+  {
+    private readonly ILogger<GetBlogImagesFunction> _logger;
+
+    public GetBlogImagesFunction(ILogger<GetBlogImagesFunction> logger)
     {
-        private readonly ILogger<GetBlogImagesFunction> _logger;
-
-        public GetBlogImagesFunction(ILogger<GetBlogImagesFunction> logger)
-        {
-            _logger = logger;
-        }
-
-        [FunctionName("GetBlogImages")]
-        public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/images")] HttpRequest req)
-        {
-            _logger.LogFunctionStart(Constants.Modules.Blog, "GetBlogImages");
-
-            // Return an empty array for now
-            var images = new List<BlogImage>();
-
-            _logger.LogFunctionComplete(Constants.Modules.Blog, "GetBlogImages");
-            return new OkObjectResult(images);
-        }
+      _logger = logger;
     }
+
+    [FunctionName("GetBlogImages")]
+    public async Task<IActionResult> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/images")] HttpRequest req)
+    {
+      _logger.LogFunctionStart("The GetBlogImages Function is starting");
+      _logger.LogInformation("C# HTTP trigger function processed a request.");
+
+      // Return an empty array for now
+      var images = new List<BlogImage>();
+
+      _logger.LogFunctionComplete("The GetBlogImages Function has completed");
+      return new OkObjectResult(images);
+    }
+  }
 }

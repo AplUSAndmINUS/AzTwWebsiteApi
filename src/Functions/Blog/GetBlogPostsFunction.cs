@@ -8,31 +8,36 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
-using BlogReaderFunction.Models;
-using BlogReaderFunction.Services;
-using BlogReaderFunction.Utils;
+using AzTwWebsiteApi.Utils;
+using AzTwWebsiteApi.Models.Blog.BlogPost;
 
-namespace BlogReaderFunction.Functions
+// Commenting out for now due to simple structure functions
+// using AzTwWebsiteApi.Models;
+// using AzTwWebsiteApi.Services;
+
+namespace AzTwWebsiteApi.Functions.Blog
 {
-    public class GetBlogPostsFunction
+  public class GetBlogPostsFunction
+  {
+    private readonly ILogger<GetBlogPostsFunction> _logger;
+
+    public GetBlogPostsFunction(ILogger<GetBlogPostsFunction> logger)
     {
-        private readonly ILogger<GetBlogPostsFunction> _logger;
-
-        public GetBlogPostsFunction(ILogger<GetBlogPostsFunction> logger)
-        {
-            _logger = logger;
-        }
-
-        [FunctionName("GetBlogPosts")]
-        public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequest req)
-        {
-            _logger.LogInformation("C# HTTP trigger function processed a request.");
-
-            // Return an empty array for now
-            var posts = new List<BlogPost>();
-
-            return new OkObjectResult(posts);
-        }
+      _logger = logger;
     }
+
+    [FunctionName("GetBlogPosts")]
+    public async Task<IActionResult> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequest req)
+    {
+      _logger.LogFunctionStart("The GetBlogPosts Function is starting");
+      _logger.LogInformation("C# HTTP trigger function processed a request.");
+
+      // Return an empty array for now
+      var posts = new List<BlogPost>();
+
+      _logger.LogFunctionComplete("The GetBlogPosts Function has completed");
+      return new OkObjectResult(posts);
+    }
+  }
 }

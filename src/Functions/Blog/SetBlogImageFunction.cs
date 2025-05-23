@@ -8,25 +8,39 @@ using AzTwWebsiteApi.Utils;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
-    public class SetBlogImageFunction
+  public class SetBlogImageFunction
+  {
+    private readonly ILogger<SetBlogImageFunction> _logger;
+
+    public SetBlogImageFunction(ILogger<SetBlogImageFunction> logger)
     {
-        private readonly ILogger<SetBlogImageFunction> _logger;
-
-        public SetBlogImageFunction(ILogger<SetBlogImageFunction> logger)
-        {
-            _logger = logger;
-        }
-
-        [FunctionName(Constants.Functions.SetBlogImage)]
-        public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/images/{id}")] HttpRequest req,
-            string id)
-        {
-            _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogImage);
-
-            // Return success for now
-            _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogImage);
-            return new OkResult();
-        }
+      _logger = logger;
     }
+
+    [FunctionName("SetBlogImage")]
+    public async Task<IActionResult> Run(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/images/{id}")] HttpRequest req,
+        string id)
+    {
+      _logger.LogFunctionStart("The SetBlogImage Function is starting");
+
+      _logger.LogInformation("C# HTTP trigger function processed a request.");
+
+      // Return success for now
+      _logger.LogFunctionComplete("The SetBlogImage Function has completed");
+      return new OkResult();
+    }
+
+    // [FunctionName(Constants.Functions.SetBlogImage)]
+    // public async Task<IActionResult> Run(
+    //     [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/images/{id}")] HttpRequest req,
+    //     string id)
+    // {
+    //   _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogImage);
+
+    //   // Return success for now
+    //   _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogImage);
+    //   return new OkResult();
+    // }
+  }
 }

@@ -12,9 +12,12 @@ using Microsoft.Azure.WebJobs.Extensions.Http; // HTTP context and requests
 using Microsoft.Extensions.Logging; // Structured logging support
 
 using Azure.Storage.Blobs; // Azure Blob Storage operations
-
+using AzTwWebsiteApi.Utils.LoggingExtensions; 
 using AzTwWebsiteApi.Utils; // Your utility classes and methods
-using AzTwWebsiteApi.Models.Blog; // Your blog-related models
+
+// Commenting out for now due to simple structure functions
+// using AzTwWebsiteApi.Models.Blog; // Your blog-related models
+// using AzTwWebsiteApi.Utils; // Constants for your application
 
 // namespace is for the Azure Function
 namespace AzTwWebsiteApi.Functions.Blog
@@ -24,37 +27,30 @@ namespace AzTwWebsiteApi.Functions.Blog
   // The function is triggered by an HTTP request
   // The function returns the image as a file response
 
-    public class GetBlogImageFunction
-    {
-        private readonly BlobStorageService _blobStorageService;
-        private readonly ILogger<GetBlogImageFunction> _logger;
+  public class GetBlogSingleImageFunction
+  {
+    private readonly BlobServiceClient _blobServiceClient;
+    private readonly ILogger<GetBlogSingleImageFunction> _logger;
 
-        public GetBlogImageFunction(BlobServiceClient blobServiceClient, ILogger<GetBlogImageFunction> logger)
-        {
-            _blobServiceClient = blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
-            _logger = logger;
-        }
+    public GetBlogSingleImageFunction(BlobServiceClient blobServiceClient, ILogger<GetBlogSingleImageFunction> logger)
+    {
+      _blobServiceClient = blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
+      _logger = logger;
     }
 
-    public class GetBlogSingleImageFunction
+    [FunctionName("GetBlogSingleImage")]
+    public async Task<IActionResult> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/image/{id}")] HttpRequest req,
+        string id)
     {
-        private readonly ILogger<GetBlogSingleImageFunction> _logger;
-
-        public GetBlogSingleImageFunction(ILogger<GetBlogSingleImageFunction> logger)
-        {
-            _logger = logger;
-        }
-
-        [FunctionName("GetBlogSingleImage")]
-        public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/image/{id}")] HttpRequest req,
-            string id)
-        {
-            _logger.LogFunctionStart(Constants.Modules.Blog, "GetBlogSingleImage");
-
-            // Return 404 Not Found for now
-            _logger.LogFunctionComplete(Constants.Modules.Blog, "GetBlogSingleImage");
-            return new NotFoundResult();
-        }
+      _logger.LogFunctionStart("The GetBlogSingleImage Function is starting");
+      _logger.LogInformation("C# HTTP trigger function processed a request.");
+      _logger.LogInformation("Fetching blog image with ID: {Id}", id);
+      
+      
+      // Placeholder logic: Return 404 Not Found
+      _logger.LogFunctionComplete("The GetBlogSingleImage Function has completed and got a 404");
+      return new NotFoundResult();
     }
+  }
 }
