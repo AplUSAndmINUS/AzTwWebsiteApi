@@ -34,9 +34,16 @@ jobs:
         DOTNET_VERSION: "8.0"
       run: |
         pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-        dotnet build --configuration Release --output ./output \
-          -p:RuntimeIdentifier=win-x64 \
-          -p:PublishReadyToRun=true \
+        # First restore solution dependencies
+        dotnet restore
+        
+        # Build the shared project first
+        dotnet build src/Shared/AzTwWebsiteApi.Shared.csproj --configuration Release
+        
+        # Build and publish the Functions project with all dependencies
+        dotnet publish \
+          --configuration Release \
+          --output ./output \
           -p:FunctionWorkerRuntime=dotnet-isolated
         popd
 
