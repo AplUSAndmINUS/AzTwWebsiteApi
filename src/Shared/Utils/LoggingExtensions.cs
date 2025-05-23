@@ -18,7 +18,7 @@ namespace AzTwWebsiteApi.Utils
             string operation, 
             string correlationId = null)
         {
-            return logger.BeginScope(new[] 
+            logger.BeginScope(new[] 
             {
                 new KeyValuePair<string, object>(ModuleKey, module),
                 new KeyValuePair<string, object>(ComponentKey, component),
@@ -26,35 +26,24 @@ namespace AzTwWebsiteApi.Utils
                 new KeyValuePair<string, object>(CorrelationIdKey, correlationId ?? Guid.NewGuid().ToString()),
                 new KeyValuePair<string, object>(EnvironmentKey, Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT") ?? "Development")
             });
+            return logger;
         }
 
         public static void LogFunctionStart(this ILogger logger, string module, string functionName, string correlationId = null)
         {
-            logger.WithContext(
-                    module,
-                    "Function", 
-                    $"{functionName}.Start", 
-                    correlationId)
+            logger.WithContext(module, "Function", $"{functionName}.Start", correlationId)
                 .LogInformation("[{Module}] Function {FunctionName} execution started", module, functionName);
         }
 
         public static void LogFunctionComplete(this ILogger logger, string module, string functionName, string correlationId = null)
         {
-            logger.WithContext(
-                    module,
-                    "Function", 
-                    $"{functionName}.Complete", 
-                    correlationId)
+            logger.WithContext(module, "Function", $"{functionName}.Complete", correlationId)
                 .LogInformation("[{Module}] Function {FunctionName} execution completed successfully", module, functionName);
         }
 
         public static void LogFunctionError(this ILogger logger, string module, string functionName, Exception ex, string correlationId = null)
         {
-            logger.WithContext(
-                    module,
-                    "Function", 
-                    $"{functionName}.Error", 
-                    correlationId)
+            logger.WithContext(module, "Function", $"{functionName}.Error", correlationId)
                 .LogError(ex, "[{Module}] Function {FunctionName} execution failed: {ErrorMessage}", module, functionName, ex.Message);
         }
     }

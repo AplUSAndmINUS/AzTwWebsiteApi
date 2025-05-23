@@ -22,12 +22,12 @@ namespace AzTwWebsiteApi.Functions.Blog
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/images/{id}")] HttpRequest req,
         string id)
     {
-      _logger.LogFunctionStart("The SetBlogImage Function is starting");
+      _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogImage);
 
       _logger.LogInformation("C# HTTP trigger function processed a request.");
 
       // Return success for now
-      _logger.LogFunctionComplete("The SetBlogImage Function has completed");
+      _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogImage);
       return new OkResult();
     }
 

@@ -12,7 +12,7 @@ using Microsoft.Azure.WebJobs.Extensions.Http; // HTTP context and requests
 using Microsoft.Extensions.Logging; // Structured logging support
 
 using Azure.Storage.Blobs; // Azure Blob Storage operations
-using AzTwWebsiteApi.Utils.LoggingExtensions; 
+using AzTwWebsiteApi.Utils;
 using AzTwWebsiteApi.Utils; // Your utility classes and methods
 
 // Commenting out for now due to simple structure functions
@@ -43,13 +43,13 @@ namespace AzTwWebsiteApi.Functions.Blog
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/image/{id}")] HttpRequest req,
         string id)
     {
-      _logger.LogFunctionStart("The GetBlogSingleImage Function is starting");
+      _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.GetBlogImage);
       _logger.LogInformation("C# HTTP trigger function processed a request.");
       _logger.LogInformation("Fetching blog image with ID: {Id}", id);
       
       
       // Placeholder logic: Return 404 Not Found
-      _logger.LogFunctionComplete("The GetBlogSingleImage Function has completed and got a 404");
+      _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.GetBlogImage);
       return new NotFoundResult();
     }
   }

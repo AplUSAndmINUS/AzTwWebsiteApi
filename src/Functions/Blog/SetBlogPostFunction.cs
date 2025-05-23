@@ -5,8 +5,7 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
-// Commenting out for now due to simple structure functions
-// using AzTwWebsiteApi.Utils;
+using AzTwWebsiteApi.Utils;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
@@ -23,12 +22,12 @@ namespace AzTwWebsiteApi.Functions.Blog
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts")] HttpRequest req)
         {
-            _logger.LogFunctionStart("The SetBlogPost Function is starting");
+            _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
 
             _logger.LogInformation("C# HTTP trigger function processed a request.");
 
             // Return success for now
-            _logger.LogFunctionComplete("The SetBlogPost Function has completed");
+            _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
             return new OkResult();
         }
 

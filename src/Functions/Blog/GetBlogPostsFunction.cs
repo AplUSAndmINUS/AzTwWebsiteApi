@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using AzTwWebsiteApi.Utils;
-using AzTwWebsiteApi.Models.Blog.BlogPost;
+using AzTwWebsiteApi.Models.Blog;
 
 // Commenting out for now due to simple structure functions
 // using AzTwWebsiteApi.Models;
@@ -30,13 +30,13 @@ namespace AzTwWebsiteApi.Functions.Blog
     public async Task<IActionResult> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequest req)
     {
-      _logger.LogFunctionStart("The GetBlogPosts Function is starting");
+      _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
       _logger.LogInformation("C# HTTP trigger function processed a request.");
 
       // Return an empty array for now
       var posts = new List<BlogPost>();
 
-      _logger.LogFunctionComplete("The GetBlogPosts Function has completed");
+      _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
       return new OkObjectResult(posts);
     }
   }

@@ -29,7 +29,6 @@ namespace AzTwWebsiteApi.Utils
             public const string SetBlogPosts = "SetBlogPosts";
             public const string GetBlogImage = "GetBlogImage";
             public const string SetBlogImage = "SetBlogImage";
-            // Add other function names as they are created
         }
     }
 }
