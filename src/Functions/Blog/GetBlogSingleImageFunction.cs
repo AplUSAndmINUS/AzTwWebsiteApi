@@ -1,26 +1,21 @@
-using System; // Basic C# Types and functionality
-using System.IO; // File and stream operations
-using System.Threading.Tasks; // Async/Await support
-using System.Net; // HTTP status codes and web functionality
+// C# app- GetBlogSinglePostFunction.cs
+// Endpoint: api/blog/image/{id}
 
-using Microsoft.AspNetCore.Mvc; // MVC components (IActionResult, ActionResult)
-using Microsoft.AspNetCore.Http; // HTTP request/response handling
-
-using Microsoft.Azure.WebJobs; // Azure Functions core components
-using Microsoft.Azure.WebJobs.Extensions.Http; // HTTP context and requests
+using System.Net; // HTTP status codes
+using Microsoft.Azure.Functions.Worker; // Azure Functions Worker SDK
+using Microsoft.Azure.Functions.Worker.Http; // HTTP trigger and response types
 
 using Microsoft.Extensions.Logging; // Structured logging support
 
 using Azure.Storage.Blobs; // Azure Blob Storage operations
 using AzTwWebsiteApi.Utils;
-using AzTwWebsiteApi.Utils; // Your utility classes and methods
 
 // Commenting out for now due to simple structure functions
 // using AzTwWebsiteApi.Models.Blog; // Your blog-related models
 // using AzTwWebsiteApi.Utils; // Constants for your application
 
 // namespace is for the Azure Function
-namespace AzTwWebsiteApi.Functions.Blog
+namespace BlogFunctions
 {
   // This class defines an Azure Function to get a blog image
   // It uses the BlobStorageService to retrieve the image from Azure Blob Storage
@@ -38,9 +33,9 @@ namespace AzTwWebsiteApi.Functions.Blog
       _logger = logger;
     }
 
-    [FunctionName("GetBlogSingleImage")]
-    public async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/image/{id}")] HttpRequest req,
+    [Function("GetBlogSingleImage")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/image/{id}")] HttpRequestData req,
         string id)
     {
       _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.GetBlogImage);
@@ -50,7 +45,7 @@ namespace AzTwWebsiteApi.Functions.Blog
       
       // Placeholder logic: Return 404 Not Found
       _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.GetBlogImage);
-      return new NotFoundResult();
+      return req.CreateResponse(HttpStatusCode.NotFound);
     }
   }
 }

@@ -1,13 +1,10 @@
 // C3 app- GetBlogPostsFunction.cs
 // Endpoint: api/blog/posts
 
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
+using System.Net;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
 using AzTwWebsiteApi.Utils;
 using AzTwWebsiteApi.Models.Blog;
 
@@ -26,9 +23,9 @@ namespace AzTwWebsiteApi.Functions.Blog
       _logger = logger;
     }
 
-    [FunctionName("GetBlogPosts")]
-    public async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequest req)
+    [Function("GetBlogPosts")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequestData req)
     {
       _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
       _logger.LogInformation("C# HTTP trigger function processed a request.");
@@ -36,8 +33,11 @@ namespace AzTwWebsiteApi.Functions.Blog
       // Return an empty array for now
       var posts = new List<BlogPost>();
 
+      var response = req.CreateResponse(HttpStatusCode.OK);
+      await response.WriteAsJsonAsync(posts);
+
       _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
-      return new OkObjectResult(posts);
+      return response;
     }
   }
 }

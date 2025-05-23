@@ -1,13 +1,13 @@
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
+// C# app- SetBlogSingleImageFunction.cs
+// Endpoint: api/blog/post/{id}
 
+using System.Net;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Utils;
 
-namespace AzTwWebsiteApi.Functions.Blog
+namespace BlogFunctions
 {
     public class SetBlogPostsFunction
     {
@@ -18,9 +18,9 @@ namespace AzTwWebsiteApi.Functions.Blog
             _logger = logger;
         }
 
-        [FunctionName("SetBlogPost")]
-        public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts")] HttpRequest req)
+        [Function("SetBlogPost")]
+        public async Task<HttpResponseData> Run(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts")] HttpRequestData req)
         {
             _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
 
@@ -28,7 +28,7 @@ namespace AzTwWebsiteApi.Functions.Blog
 
             // Return success for now
             _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.SetBlogPosts);
-            return new OkResult();
+            return req.CreateResponse(HttpStatusCode.OK);
         }
 
         // [FunctionName(Constants.Functions.SetBlogPosts)]

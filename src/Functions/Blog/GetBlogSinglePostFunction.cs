@@ -1,12 +1,13 @@
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
+// C# app- GetBlogSinglePostFunction.cs
+// Endpoint: api/blog/post/{id}
+
+using System.Net;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Utils;
 
-namespace AzTwWebsiteApi.Functions.Blog
+namespace BlogFunctions
 {
   public class GetBlogSinglePostFunction
   {
@@ -17,9 +18,9 @@ namespace AzTwWebsiteApi.Functions.Blog
       _logger = logger;
     }
 
-    [FunctionName("GetBlogSinglePost")]
-    public async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/post/{id}")] HttpRequest req,
+    [Function("GetBlogSinglePost")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/post/{id}")] HttpRequestData req,
         string id)
     {
       _logger.LogFunctionStart(Constants.Modules.Blog, "GetBlogSinglePost");
@@ -28,7 +29,7 @@ namespace AzTwWebsiteApi.Functions.Blog
 
       // Return 404 Not Found for now
       _logger.LogFunctionComplete(Constants.Modules.Blog, "GetBlogSinglePost");
-      return new NotFoundResult();
+      return req.CreateResponse(HttpStatusCode.NotFound);
     }
   }
 }
