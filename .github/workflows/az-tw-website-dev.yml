@@ -49,6 +49,9 @@ jobs:
       with:
         app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
         package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+        respect-funcignore: true
+        scm-do-build-during-deployment: false
+        enable-oryx-build: false
 
     - name: 'Configure Managed Identity and RBAC'
       uses: azure/CLI@v1
