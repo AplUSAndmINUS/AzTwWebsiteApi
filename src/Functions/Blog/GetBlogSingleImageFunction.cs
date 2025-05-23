@@ -24,23 +24,17 @@ namespace AzTwWebsiteApi.Functions.Blog
   // The function is triggered by an HTTP request
   // The function returns the image as a file response
 
-  private readonly BlobStorageService _blobStorageService;
-  private readonly ILogger<GetBlogImageFunction> _logger;
-  public class GetBlogImageFunction(BlobServiceClient blobServiceClient, ILogger<GetBlogImageFunction> logger)
-  {
-    _blobServiceClient = blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
-    _logger = logger;
+    public class GetBlogImageFunction
+    {
+        private readonly BlobStorageService _blobStorageService;
+        private readonly ILogger<GetBlogImageFunction> _logger;
 
-    // Initialize the BlobServiceClient and BlobContainerClient for mock and prod containers
-    var containerClientMock = _blobServiceClient.GetBlobContainerClient("mock-blog-images");
-    // var containerClient = _blobServiceClient.GetBlobContainerClient("blog-images");
-    var blobClientMock = containerClientMock.GetBlobClient(imageName); }
-  // var blobClient = containerClient.GetBlobClient(imageName);
-    
-    
-
-  // Class implementation and methods
-}
+        public GetBlogImageFunction(BlobServiceClient blobServiceClient, ILogger<GetBlogImageFunction> logger)
+        {
+            _blobServiceClient = blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
+            _logger = logger;
+        }
+    }
 
     public class GetBlogSingleImageFunction
     {
