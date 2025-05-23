@@ -7,14 +7,15 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: az-tw-website-tst
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   DOTNET_VERSION: '8.0.x'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: test
+    environment:
+      name: test
+      url: https://${{ vars.AZURE_FUNCTIONAPP_NAME_TST }}.azurewebsites.net
     steps:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v4
@@ -36,13 +37,18 @@ jobs:
       run: |
         dotnet test
 
+    - name: 'Login via Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        enable-AzPSSession: true
+
     - name: 'Deploy to Azure Function App Staging Slot'
       uses: Azure/functions-action@v1
       id: fa
       with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }}
         package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
-        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
         slot-name: 'staging'
 
     - name: 'Configure Managed Identity and RBAC'
@@ -51,36 +57,36 @@ jobs:
         inlineScript: |
           # Get the Function App's managed identity
           identity=$(az functionapp identity assign \
-            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --query principalId --output tsv)
 
           # Assign RBAC roles to the Function App's managed identity for storage
           az role assignment create \
             --assignee $identity \
             --role "Storage Blob Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/az-tw-website-storage/providers/Microsoft.Storage/storageAccounts/aztwwebsitestorage"
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME}}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
 
           az role assignment create \
             --assignee $identity \
             --role "Storage Table Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/az-tw-website-storage/providers/Microsoft.Storage/storageAccounts/aztwwebsitestorage"
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME}}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
 
     - name: 'Configure App Settings'
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az functionapp config appsettings set \
-            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --settings \
-              "BlogStorageUrl=https://aztwwebsitestorage.blob.core.windows.net" \
-              "StorageTableEndpoint=https://aztwwebsitestorage.table.core.windows.net" \
-              "BlogTableName=mockblog" \
-              "BlogCommentsTableName=mockblogcomments" \
-              "BlogImagesContainer=mock-blog-images" \
+              "BlogStorageUrl=https://${{ vars.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
+              "StorageTableEndpoint=https://${{ vars.STORAGE_ACCOUNT_NAME }}.table.core.windows.net" \
+              "BlogTableName=${{ vars.MOCK_BLOG_TABLE_NAME }}" \
+              "BlogCommentsTableName=${{ vars.MOCK_BLOG_COMMENTS_TABLE_NAME }}" \
+              "BlogImagesContainer=${{ vars.MOCK_BLOG_IMAGES_CONTAINER_NAME }}" \
               "AZURE_FUNCTIONS_ENVIRONMENT=Test" \
-              "APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}"
+              "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}"
 
     - name: 'Wait for Deployment Stabilization'
       run: sleep 30
@@ -90,7 +96,7 @@ jobs:
       shell: bash
       env:
         MAX_RESPONSE_TIME: 4000  # 4 seconds threshold for test environment
-        FUNCTION_APP_URL: https://az-tw-website-tst.azurewebsites.net
+        FUNCTION_APP_URL: https://${{ vars.AZURE_FUNCTIONAPP_NAME_TST}}.azurewebsites.net
       run: |
         # Helper function for endpoint testing
         test_endpoint() {
@@ -178,12 +184,12 @@ jobs:
         
         curl -X POST \
           -H "Content-Type: application/json" \
-          -H "x-api-key: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
+          -H "x-api-key: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}" \
           https://dc.services.visualstudio.com/v2/track \
           -d "{
             \"name\": \"Smoke Tests Results\",
             \"time\": \"$TIMESTAMP\",
-            \"iKey\": \"${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}\",
+            \"iKey\": \"${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}\",
             \"data\": {
               \"baseType\": \"CustomEvent\",
               \"baseData\": {
@@ -199,12 +205,63 @@ jobs:
         
         echo "::notice::All smoke tests passed successfully in staging environment!"
 
+    - name: 'Rollback on Failed Tests'
+      if: failure() && steps.smoke_tests.outcome == 'failure'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          echo "::warning::Smoke tests failed! Starting rollback procedure..."
+          
+          # Swap back to the previous production slot
+          echo "Rolling back - swapping slots back to their previous state..."
+          az functionapp deployment slot swap \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --slot production \
+            --target-slot staging
+          
+          # Verify the rollback
+          echo "Verifying rollback by checking original production slot..."
+          ROLLBACK_CHECK_URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME_TST }}.azurewebsites.net/api/health"
+          ROLLBACK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ROLLBACK_CHECK_URL)
+          
+          if [ "$ROLLBACK_STATUS" == "200" ]; then
+            echo "::notice::Rollback completed successfully!"
+          else
+            echo "::error::Rollback verification failed! Please check the application manually."
+            exit 1
+          fi
+          
+          # Notify via App Insights about the rollback
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}" \
+            https://dc.services.visualstudio.com/v2/track \
+            -d "{
+              \"name\": \"Deployment Rollback\",
+              \"time\": \"$TIMESTAMP\",
+              \"iKey\": \"${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}\",
+              \"data\": {
+                \"baseType\": \"CustomEvent\",
+                \"baseData\": {
+                  \"ver\": \"2.0\",
+                  \"name\": \"DeploymentRollback\",
+                  \"properties\": {
+                    \"environment\": \"test\",
+                    \"reason\": \"Failed smoke tests\",
+                    \"status\": \"completed\"
+                  }
+                }
+              }
+            }"
+
     - name: 'Swap Test Slot to Production'
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az functionapp deployment slot swap \
-            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --slot test \
             --target-slot production

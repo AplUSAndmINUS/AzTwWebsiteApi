@@ -7,14 +7,15 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: az-tw-website-dev
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   DOTNET_VERSION: '8.0.x'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: development
+    environment:
+      name: development
+      url: https://az-tw-website-dev.azurewebsites.net
     steps:
     - name: 'Checkout GitHub Action'
       uses: actions/checkout@v4
@@ -36,13 +37,18 @@ jobs:
       run: |
         dotnet test
 
+    - name: 'Login via Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        enable-AzPSSession: true
+
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
       id: fa
       with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
         package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
-        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
     - name: 'Configure Managed Identity and RBAC'
       uses: azure/CLI@v1
@@ -50,36 +56,36 @@ jobs:
         inlineScript: |
           # Get the Function App's managed identity
           identity=$(az functionapp identity assign \
-            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --query principalId --output tsv)
 
           # Assign RBAC roles to the Function App's managed identity for storage
           az role assignment create \
             --assignee $identity \
             --role "Storage Blob Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/az-tw-website-storage/providers/Microsoft.Storage/storageAccounts/aztwwebsitestorage"
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME }}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
 
           az role assignment create \
             --assignee $identity \
             --role "Storage Table Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/az-tw-website-storage/providers/Microsoft.Storage/storageAccounts/aztwwebsitestorage"
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME }}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
 
     - name: 'Configure App Settings'
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az functionapp config appsettings set \
-            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --settings \
-              "BlogStorageUrl=https://${{ secrets.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
-              "StorageTableEndpoint=https://${{ secrets.STORAGE_ACCOUNT_NAME }}.table.core.windows.net" \
-              "BlogTableName=mockblog" \
-              "BlogCommentsTableName=mockblogcomments" \
-              "BlogImagesContainer=mock-blog-images" \
+              "BlogStorageUrl=https://${{ vars.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
+              "StorageTableEndpoint=https://${{ vars.STORAGE_ACCOUNT_NAME }}.table.core.windows.net" \
+              "BlogTableName=${{ vars.MOCK_BLOG_TABLE_NAME }}" \
+              "BlogCommentsTableName=${{ vars.MOCK_BLOG_COMMENTS_TABLE_NAME }}" \
+              "BlogImagesContainer=${{ vars.MOCK_BLOG_IMAGES_CONTAINER_NAME }}" \
               "AZURE_FUNCTIONS_ENVIRONMENT=Development" \
-              "APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}"
+              "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_DEV }}"
 
     - name: 'Wait for Deployment Stabilization'
       run: sleep 30
@@ -89,7 +95,7 @@ jobs:
       shell: bash
       env:
         MAX_RESPONSE_TIME: 5000  # More lenient timeout for development
-        FUNCTION_APP_URL: https://az-tw-website-dev.azurewebsites.net
+        FUNCTION_APP_URL: https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.azurewebsites.net
       run: |
         # Function to test endpoint with retries
         test_endpoint() {
