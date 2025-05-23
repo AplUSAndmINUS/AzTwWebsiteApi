@@ -28,28 +28,24 @@ jobs:
 
     - name: 'Build and Publish Functions'
       shell: bash
-      env:
-        FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
-        DOTNET_VERSION: "8.0"
       run: |
         # First restore solution dependencies
         dotnet restore
         
-        # Build the shared project first
+        # Build shared project
         dotnet build src/Shared/AzTwWebsiteApi.Shared.csproj --configuration Release
         
-        # Create output directory
-        mkdir -p ${{ env.OUTPUT_PATH }}
-        
-        # Build and publish each function project
-        for func in ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/*; do
+        # Find and publish all function projects
+        for func in src/Functions/*/; do
           if [ -f "$func"/*.csproj ]; then
             echo "Publishing function: $func"
             dotnet publish "$func" \
               --configuration Release \
+              --runtime linux-x64 \
+              --self-contained true \
               --output ${{ env.OUTPUT_PATH }} \
               -p:PublishReadyToRun=true \
-              -p:FunctionWorkerRuntime=dotnet-isolated
+              -p:PublishSingleFile=true
           fi
         done
         
@@ -73,7 +69,6 @@ jobs:
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-        enable-AzPSSession: true
 
     - name: 'Configure Function App Settings'
       uses: azure/CLI@v1
