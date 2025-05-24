@@ -19,6 +19,8 @@ This file contains guidelines and instructions for using GitHub Copilot to assis
 3. Test all changes locally before committing.
 <!-- 4. Implement Fluent UI from the `@fluentui/react` library for the frontend. -->
 <!-- 5. Implement the "useSPFxTheme" hook on any front-end components that require it. -->
+4. Use JSX Fluent UI components for the frontend wherever possible.
+5. Use SCSS modules for styling components that do not support JSX Fluent UI.
 6. Prioritize JSX Fluent UI over SCSS modules wherever possible.
 7. Utilize the module.scss file within any component anywhere JSX is not possible to use.
 8. Ensure storybook is used for all components.
