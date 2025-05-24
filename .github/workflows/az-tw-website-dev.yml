@@ -82,6 +82,12 @@ jobs:
         
         echo "📦 Deployment package contents:"
         unzip -l function-app.zip
+        if [ -f function-app.zip ]; then
+          echo "✅ function-app.zip created successfully!"
+        else
+          echo "❌ ZIP creation failed!"
+          exit 1
+        fi
 
     - name: 'Pre-deployment Check'
       shell: bash
@@ -102,11 +108,15 @@ jobs:
       shell: bash
       run: |
         echo "⚙️ Configuring Function App settings..."
+        echo "Function App Name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}"
+        echo "Resource Group: ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}"
+        echo "Storage Account Name: ${{ vars.STORAGE_ACCOUNT_NAME }}"
+        echo "Storage Connection String: ${{ secrets.STORAGE_CONNECTION_STRING }}"
         # Configure function app for Linux and .NET 8.0
         az functionapp config set \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --linux-fx-version "DOTNET-ISOLATED|8.0-dotnet-isolated8.0" \
+          --linux-fx-version "DOTNET-ISOLATED|8" \
           --net-framework-version "v8.0" \
           --use-32bit-worker-process false
 
