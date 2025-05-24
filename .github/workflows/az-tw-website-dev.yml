@@ -57,6 +57,10 @@ jobs:
           -p:GenerateRuntimeConfigurationFiles=true \
           -p:UseAppHost=false
         
+        # Verify function.json files
+        echo "🔍 Checking for function.json files..."
+        find ./output -name "function.json" -type f -exec echo "Found: {}" \; -exec cat {} \;
+        
         # Ensure proper function app structure
         echo "� Setting up function app structure..."
         
@@ -116,7 +120,7 @@ jobs:
         az functionapp config set \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --linux-fx-version "DOTNET-ISOLATED|8" \
+          --linux-fx-version "DOTNET-ISOLATED|8.0" \
           --net-framework-version "v8.0" \
           --use-32bit-worker-process false
 
@@ -143,7 +147,7 @@ jobs:
       id: deploy
       with:
         app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
-        package: ./output
+        package: ./function-app.zip
         respect-funcignore: true
         scm-do-build-during-deployment: false
         enable-oryx-build: false
@@ -190,6 +194,40 @@ jobs:
         else
           echo "❌ Content share verification failed"
           exit 1
+        fi
+
+    - name: 'Sync Function Triggers'
+      if: success()
+      shell: bash
+      run: |
+        echo "🔄 Syncing function triggers..."
+        az functionapp deployment list-functions \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[].{name:name,language:language,isDisabled:isDisabled}"
+
+        echo "🔄 Forcing trigger sync..."
+        az functionapp function sync \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
+
+        # Give some time for the sync to complete
+        echo "⏳ Waiting for sync to complete..."
+        sleep 30
+
+        echo "📋 Verifying functions..."
+        FUNCTIONS=$(az functionapp function list \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[].name" -o tsv)
+
+        if [ -z "$FUNCTIONS" ]; then
+          echo "❌ No functions were discovered!"
+          echo "🔍 Checking function.json files..."
+          find ./output -name "function.json" -type f -exec cat {} \;
+          exit 1
+        else
+          echo "✅ Functions discovered: $FUNCTIONS"
         fi
 
     - name: 'Report Deployment Status'
