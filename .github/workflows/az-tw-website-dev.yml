@@ -36,58 +36,75 @@ jobs:
         FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
         DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
       run: |
-        # Clean and create output directory
-        rm -rf ./output || true
+        # Clean output directory
+        rm -rf ./output
         mkdir -p ./output
-        
-        # Restore and build solution
+
+        # Build solution
+        echo "🔨 Building solution..."
         dotnet restore
         dotnet build --configuration Release
         
         # Publish functions
-        for func in ./src/Functions/*; do
-          if [ -f "$func"/*.csproj ]; then
-            echo "📦 Publishing function: $func"
-            dotnet publish "$func" \
-              --configuration Release \
-              --output ./output \
-              --runtime linux-x64 \
-              --no-self-contained \
-              -p:FunctionWorkerRuntime=dotnet-isolated
-          fi
-        done
-        
+        echo "📦 Publishing functions..."
+        dotnet publish src/Functions/Blog/BlogFunctions.csproj \
+          --configuration Release \
+          --output ./output \
+          --runtime linux-x64 \
+          --no-self-contained \
+          -p:PublishReadyToRun=false \
+          -p:GenerateRuntimeConfigurationFiles=true
+
         # Verify output
         echo "🔍 Verifying deployment package..."
-        if [ -f "./output/host.json" ]; then
-          echo "✅ host.json found"
-        else
-          echo "📝 Copying host.json..."
+        if [ ! -f "./output/host.json" ]; then
+          echo "Copying host.json..."
           cp src/Functions/Blog/host.json ./output/
         fi
 
+    - name: 'Pre-deployment Check'
+      shell: bash
+      run: |
+        echo "📝 Checking Function App configuration..."
+        az functionapp config show \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "{runtime:linuxFxVersion,platform:use32BitWorkerProcess}"
+
+        echo "📦 Verifying package contents..."
+        ls -la ./output
+        
+        echo "🔧 Checking host.json..."
+        cat ./output/host.json
+
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
-      id: fa
+      id: deploy
       with:
         app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
-        package: ${{ env.OUTPUT_PATH }}
+        package: ./output
+        respect-funcignore: false
         scm-do-build-during-deployment: false
         enable-oryx-build: false
 
     - name: 'Verify Deployment'
-      if: success()
+      if: always()
       shell: bash
       run: |
         echo "⏳ Waiting for deployment to stabilize..."
         sleep 30
         
+        echo "📋 Checking deployment logs..."
+        az functionapp deployment list \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[0]"
+
         echo "🔍 Checking Function App status..."
         az functionapp show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{State:state,Status:status}" \
-          --output table
+          --query "{State:state,Status:statusReason}"
 
     - name: 'Report Deployment Status'
       if: always()
