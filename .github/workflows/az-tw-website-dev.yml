@@ -42,8 +42,8 @@ jobs:
 
         # Build solution
         echo "🔨 Building solution..."
-        dotnet restore
-        dotnet build --configuration Release
+        dotnet restore AzTwWebsiteApi.sln
+        dotnet build AzTwWebsiteApi.sln --configuration Release
         
         # Publish functions
         echo "📦 Publishing functions..."
@@ -53,14 +53,27 @@ jobs:
           --runtime linux-x64 \
           --no-self-contained \
           -p:PublishReadyToRun=false \
-          -p:GenerateRuntimeConfigurationFiles=true
+          -p:GenerateRuntimeConfigurationFiles=true \
+          -p:UseAppHost=false
 
-        # Verify output
-        echo "🔍 Verifying deployment package..."
-        if [ ! -f "./output/host.json" ]; then
-          echo "Copying host.json..."
-          cp src/Functions/Blog/host.json ./output/
+        # Verify and copy configuration files
+        echo "🔍 Copying configuration files..."
+        cp src/Functions/Blog/host.json ./output/
+        
+        # Create local.settings.json if it doesn't exist
+        if [ ! -f "./output/local.settings.json" ]; then
+          echo '{
+            "IsEncrypted": false,
+            "Values": {
+              "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+              "AzureWebJobsStorage": ""
+            }
+          }' > ./output/local.settings.json
         fi
+        
+        # List output contents
+        echo "📦 Output directory contents:"
+        ls -la ./output/
 
     - name: 'Pre-deployment Check'
       shell: bash
@@ -76,6 +89,22 @@ jobs:
         
         echo "🔧 Checking host.json..."
         cat ./output/host.json
+
+    - name: 'Configure Function App Settings'
+      shell: bash
+      run: |
+        echo "⚙️ Configuring Function App settings..."
+        az functionapp config set \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --use-32bit-worker-process false \
+          --linux-fx-version "DOTNET-ISOLATED|8.0"
+        
+        az functionapp config appsettings set \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --settings FUNCTIONS_WORKER_RUNTIME=dotnet-isolated \
+                    WEBSITE_RUN_FROM_PACKAGE=1
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
