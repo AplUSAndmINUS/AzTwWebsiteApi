@@ -106,7 +106,7 @@ jobs:
         az functionapp config set \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --linux-fx-version "DOTNET-ISOLATED|8.0" \
+          --linux-fx-version "DOTNET-ISOLATED|8.0-dotnet-isolated8.0" \
           --net-framework-version "v8.0" \
           --use-32bit-worker-process false
 
