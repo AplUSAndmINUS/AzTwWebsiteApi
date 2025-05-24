@@ -43,6 +43,7 @@ jobs:
         # Build solution
         echo "🔨 Building solution..."
         dotnet restore AzTwWebsiteApi.sln
+        dotnet clean AzTwWebsiteApi.sln --configuration Release
         dotnet build AzTwWebsiteApi.sln --configuration Release
         
         # Publish functions
@@ -51,29 +52,36 @@ jobs:
           --configuration Release \
           --output ./output \
           --runtime linux-x64 \
-          --no-self-contained \
+          --self-contained false \
           -p:PublishReadyToRun=false \
           -p:GenerateRuntimeConfigurationFiles=true \
           -p:UseAppHost=false
-
-        # Verify and copy configuration files
-        echo "🔍 Copying configuration files..."
+        
+        # Ensure proper function app structure
+        echo "� Setting up function app structure..."
+        
+        # Copy host.json
         cp src/Functions/Blog/host.json ./output/
         
-        # Create local.settings.json if it doesn't exist
-        if [ ! -f "./output/local.settings.json" ]; then
-          echo '{
-            "IsEncrypted": false,
-            "Values": {
-              "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-              "AzureWebJobsStorage": ""
-            }
-          }' > ./output/local.settings.json
-        fi
+        # Create minimal local.settings.json
+        echo '{
+          "IsEncrypted": false,
+          "Values": {
+            "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+            "AzureWebJobsStorage": "",
+            "FUNCTIONS_EXTENSION_VERSION": "~4",
+            "WEBSITE_RUN_FROM_PACKAGE": "1"
+          }
+        }' > ./output/local.settings.json
         
-        # List output contents
-        echo "📦 Output directory contents:"
-        ls -la ./output/
+        # Create deployment package
+        echo "📦 Creating deployment package..."
+        cd ./output
+        zip -r ../function-app.zip ./*
+        cd ..
+        
+        echo "📦 Deployment package contents:"
+        unzip -l function-app.zip
 
     - name: 'Pre-deployment Check'
       shell: bash
@@ -119,14 +127,15 @@ jobs:
             ENABLE_ORYX_BUILD="false"
 
     - name: 'Deploy to Azure Function App'
-      uses: Azure/functions-action@v1
-      id: deploy
-      with:
-        app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}
-        package: ./output
-        respect-funcignore: false
-        scm-do-build-during-deployment: false
-        enable-oryx-build: false
+      shell: bash
+      run: |
+        echo "📤 Deploying function app package..."
+        az functionapp deployment source config-zip \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --src ./function-app.zip \
+          --build-remote false \
+          --verbose
 
     - name: 'Verify Deployment'
       if: always()
