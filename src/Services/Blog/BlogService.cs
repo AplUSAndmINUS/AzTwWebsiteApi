@@ -35,21 +35,89 @@ using AzTwWebsiteApi.Services.Blog;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
-    public class BlogService
-    {
-        private readonly ILogger<BlogService> _logger;
-        private readonly ITableStorageService _tableStorageService;
-        private readonly IBlobStorageService _blobStorageService;
+  public class BlogService
+  {
+    private readonly ILogger<BlogService> _logger;
+    private readonly ITableStorageService _tableStorageService;
+    private readonly IBlobStorageService _blobStorageService;
 
-        public BlogService(ILogger<BlogService> logger, 
-                           ITableStorageService tableStorageService, 
-                           IBlobStorageService blobStorageService)
+    public BlogService(ILogger<BlogService> logger,
+                       ITableStorageService tableStorageService,
+                       IBlobStorageService blobStorageService)
+    {
+      _logger = logger;
+      _tableStorageService = tableStorageService;
+      _blobStorageService = blobStorageService;
+    }
+
+    // Get all blog posts, paginated at 25 per each
+    // Endpoint: api/blog/posts
+    // Query parameter: pageSize (optional, default 25, max 100)
+    [Function("GetBlogPosts")]
+    public async Task<HttpResponseData> GetBlogPosts(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequestData req)
+    {
+      _logger.LogInformation("C# HTTP trigger function processed a request for blog posts.");
+
+      int defaultPageSize = 25;
+      int maxPageSize = 100; // Prevent excessive queries
+      int pageSize = defaultPageSize;
+
+      if (req.Query.ContainsKey("pageSize") && 
+          int.TryParse(req.Query["pageSize"], out int requestedPageSize) && requestedPageSize > 0)
+      {
+          // Enforce upper limit to prevent excessive queries
+          pageSize = Math.Min(requestedPageSize, maxPageSize);
+      }
+
+
+      try
+      {
+        var (posts, newContinuationToken) = await _tableStorageService.GetPaginatedAsync<BlogPost>(pageSize, continuationToken);
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { posts, continuationToken = newContinuationToken });
+        return response;
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Error retrieving blog posts");
+        var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+        await errorResponse.WriteStringAsync("An error occurred while retrieving blog posts.");
+        return errorResponse;
+      }
+    }
+
+    // Get a specific blog post by ID
+    // Endpoint: api/blog/posts/{id}
+    [Function("GetBlogPostById")]
+    public async Task<HttpResponseData> GetBlogPostById(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts/{id}")] HttpRequestData req,
+        string id)
+    {
+      _logger.LogInformation($"C# HTTP trigger function processed a request for blog post with ID: {id}");
+
+      try
+      {
+        var post = await _tableStorageService.GetAsync<BlogPost>(authorId, id);
+        if (post == null)
         {
-            _logger = logger;
-            _tableStorageService = tableStorageService;
-            _blobStorageService = blobStorageService;
+          var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
+          await notFoundResponse.WriteStringAsync("Blog post not found.");
+          return notFoundResponse;
         }
 
-        // Add methods to handle blog posts, images, and comments here
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(post);
+        return response;
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Error retrieving blog post with ID: {id}, Requester IP: {ip}", id, req.HttpContext.Connection.RemoteIpAddress);
+        _logger.LogError("Exception details: {exception}", ex.ToString());
+        var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+        await errorResponse.WriteStringAsync("An error occurred while retrieving the blog post.");
+        return errorResponse;
+      }
     }
+  }
 }
