@@ -156,20 +156,38 @@ jobs:
       if: always()
       shell: bash
       run: |
-        echo "⏳ Waiting for deployment to stabilize..."
-        sleep 30
-        
-        echo "📋 Checking deployment status..."
-        az functionapp deployment source show \
+        echo "⏳ Verifying deployment status..."
+        deployment_status=$(az functionapp deployment source show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{status:status,author:author,message:message,deployer:deployer}"
+          --query "status" -o tsv)
 
-        echo "🔍 Checking Function App status..."
-        az functionapp show \
+        function_status=$(az functionapp show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{State:state,DefaultHostName:defaultHostName,LastModified:lastModifiedTimeUtc,RuntimeVersion:siteConfig.netFrameworkVersion}"
+          --query "state" -o tsv)
+
+        echo "Deployment Status: $deployment_status"
+        echo "Function App Status: $function_status"
+
+        if [[ "$deployment_status" != "Success" ]] || [[ "$function_status" != "Running" ]]; then
+          echo "❌ Deployment verification failed!"
+          echo "📜 Checking deployment logs..."
+          az webapp deployment list \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --query "[?status!='Success'].{id:id,status:status,message:message}" \
+            -o table
+
+          echo "📜 Checking application logs..."
+          az webapp log download \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --log-file deployment.log && cat deployment.log || echo "⚠️ Unable to retrieve logs"
+          exit 1
+        fi
+
+        echo "✅ Deployment verification successful!"
 
     - name: 'Verify Content Share'
       if: always()
@@ -200,15 +218,7 @@ jobs:
       if: success()
       shell: bash
       run: |
-        echo "🔄 Restarting Function App..."
-        az functionapp restart \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
-
-        echo "⏳ Waiting for restart to complete..."
-        sleep 30
-
-        echo "📊 Getting Function App status..."
+        echo "🔄 Getting Function App status..."
         az functionapp show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
@@ -216,21 +226,23 @@ jobs:
           -o json || echo "⚠️ Unable to get Function App status"
 
         echo "📂 Checking deployment status..."
-        az webapp deployment list \
+        az functionapp deployment source show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[0]" \
+          --query "{status:status,author:author,message:message,deployer:deployer}" \
           -o json || echo "⚠️ Unable to verify deployment"
 
-        echo "🔄 Getting publishing profile..."
-        PUBLISH_PROFILE=$(az webapp deployment list-publishing-profiles \
+        echo "🔄 Waiting for deployment stability..."
+        sleep 30
+
+        echo "🔄 Getting publishing credentials..."
+        creds=$(az webapp deployment list-publishing-credentials \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --xml)
-
-        # Extract credentials from publishing profile
-        USERNAME=$(echo "$PUBLISH_PROFILE" | grep -o '<publishData><publishProfile.*userName="\([^"]*\)"' | sed 's/.*userName="\([^"]*\)".*/\1/')
-        PASSWORD=$(echo "$PUBLISH_PROFILE" | grep -o '<publishData><publishProfile.*userPWD="\([^"]*\)"' | sed 's/.*userPWD="\([^"]*\)".*/\1/')
+          -o json)
+        
+        USERNAME=$(echo "$creds" | jq -r '.publishingUserName')
+        PASSWORD=$(echo "$creds" | jq -r '.publishingPassword')
 
         echo "🔄 Forcing trigger sync..."
         curl -X POST \
@@ -240,33 +252,25 @@ jobs:
           -H "Accept: application/json" || echo "⚠️ Function sync command failed"
 
         echo "⏳ Waiting for sync to complete..."
-        sleep 45
+        sleep 30
 
         echo "📋 Listing functions..."
-        az functionapp list-functions \
+        az functionapp function list \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[].{name:name}" \
-          -o json > functions.json
+          --output json > functions.json
 
-        if [ -s functions.json ] && [ "$(cat functions.json)" != "[]" ]; then
+        if [ -s functions.json ] && jq -e 'length > 0' functions.json >/dev/null; then
           echo "✅ Functions found:"
-          cat functions.json
+          jq '.[].name' functions.json
         else
-          echo "❌ No functions found. Checking logs..."
+          echo "⚠️ No functions found. Checking application logs..."
           echo "📜 Recent function app logs:"
           az webapp log tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --provider http \
             --limit 50 || echo "⚠️ Unable to retrieve logs"
-
-          echo "📜 Deployment logs:"
-          az webapp log download \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --log-file functions.log && cat functions.log || echo "⚠️ Unable to retrieve deployment logs"
-          exit 1
         fi
     - name: 'Report Deployment Status'
       if: always()
