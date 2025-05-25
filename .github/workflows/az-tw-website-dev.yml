@@ -200,36 +200,51 @@ jobs:
       if: success()
       shell: bash
       run: |
-        echo "🔄 Syncing function triggers..."
-        az functionapp deployment list-functions \
+        echo "🔄 Restarting Function App..."
+        az functionapp restart \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
+
+        echo "⏳ Waiting for restart to complete..."
+        sleep 30
+
+        echo "📊 Getting Function App status..."
+        az functionapp show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[].{name:name,language:language,isDisabled:isDisabled}"
+          --query "{State:state,RuntimeVersion:siteConfig.netFrameworkVersion,LinuxFxVersion:siteConfig.linuxFxVersion}" \
+          -o json || echo "⚠️ Unable to get Function App status"
+
+        echo "📂 Verifying deployment in Kudu..."
+        KUDU_URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net"
+        az webapp deployment list \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[0]" || echo "⚠️ Unable to verify deployment"
 
         echo "🔄 Forcing trigger sync..."
         az functionapp function sync \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} || echo "⚠️ Function sync command failed"
 
-        # Give some time for the sync to complete
         echo "⏳ Waiting for sync to complete..."
-        sleep 30
+        sleep 45
 
-        echo "📋 Verifying functions..."
-        FUNCTIONS=$(az functionapp function list \
+        echo "📋 Listing functions..."
+        FUNCTIONS_LIST=$(az webapp list-functions \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[].name" -o tsv)
-
-        if [ -z "$FUNCTIONS" ]; then
-          echo "❌ No functions were discovered!"
-          echo "🔍 Checking function.json files..."
-          find ./output -name "function.json" -type f -exec cat {} \;
-          exit 1
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}) || echo "⚠️ Unable to list functions"
+        
+        if [ -n "$FUNCTIONS_LIST" ]; then
+          echo "✅ Functions found: $FUNCTIONS_LIST"
         else
-          echo "✅ Functions discovered: $FUNCTIONS"
+          echo "❌ No functions found. Checking logs..."
+          az functionapp logs tail \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --limit 50 || echo "⚠️ Unable to retrieve logs"
+          exit 1
         fi
-
     - name: 'Report Deployment Status'
       if: always()
       shell: bash
