@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using AzTwWebsiteApi.Models.Blog;
+using AzTwWebsiteApi.Models.BlogImage;
 
 namespace AzTwWebsiteApi.Services.Storage
 {
-    public interface ITableStorageService
+    public interface IBlobBlogImageStorageService
     {
         Task<BlogPost> GetBlogPostAsync(string id);
         Task<IEnumerable<BlogPost>> GetBlogPostsAsync();

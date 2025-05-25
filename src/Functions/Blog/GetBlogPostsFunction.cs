@@ -1,4 +1,4 @@
-// C3 app- GetBlogPostsFunction.cs
+// C# app- GetBlogPostsFunction.cs
 // Endpoint: api/blog/posts
 
 using System.Net;

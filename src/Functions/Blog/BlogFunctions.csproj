@@ -16,11 +16,21 @@
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage" Version="6.3.0" />
     <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.2.2" />
     <PackageReference Include="Microsoft.Extensions.Telemetry" Version="9.5.0" />
+    <PackageReference Include="AzTwWebsiteApi.Shared" Version="1.0.0" />
+    <PackageReference Include="System.Text.Json" Version="7.0.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\AzTwWebsiteApi.Shared.csproj" />
-    <Compile Include="..\..\Shared\AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.cs" Link="AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.cs" />
-    <Compile Include="..\..\Shared\AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.csproj" Link="AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.csproj" />
+    <Compile Include="GetBlogImagesFunction.cs" />
+    <Compile Include="GetBlogSingleImageFunction.cs" />
+    <Compile Include="GetBlogPostsFunction.cs" />
+    <Compile Include="GetBlogSinglePostFunction.cs" />
+    <Compile Include="GetBlogPostCommentsFunction.cs" />
+    <Compile Include="GetBlogPostSingleCommentFunction.cs" />
+    <Compile Include="SetBlogImageFunction.cs" />
+    <Compile Include="SetBlogPostFunction.cs" />
+    <Compile Include="SetBlogPostCommentFunction.cs" />
+    <Compile Include="DeleteBlogPostCommentFunction.cs" />
     <Compile Include="../../Models/Blog/BlogPost.cs" Link="Models\BlogPost.cs" />
     <Compile Include="../../Models/Blog/BlogPostComments.cs" Link="Models\BlogPostComments.cs" />
     <Compile Include="../../Models/Blog/BlogImage.cs" Link="Models\BlogImage.cs" />

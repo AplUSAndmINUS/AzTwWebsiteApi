@@ -5,7 +5,7 @@ using AzTwWebsiteApi.Models.Blog;
 
 namespace AzTwWebsiteApi.Services.Storage
 {
-    public interface IBlobStorageService
+    public interface ITableBlogStorageService
     {
         Task<BlogPost> GetBlogPostAsync(string id);
         Task<IEnumerable<BlogPost>> GetBlogPostsAsync();

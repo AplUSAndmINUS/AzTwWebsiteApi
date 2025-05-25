@@ -1,10 +1,10 @@
 using Azure.Data.Tables;
 
-public class TableStorageService : ITableStorageService
+public class TableBlogStorageService : ITableBlogStorageService
 {
   private readonly TableClient _tableClient;
 
-  public TableStorageService(IConfiguration configuration, ILogger<TableStorageService> logger)
+  public TableBlogStorageService(IConfiguration configuration, ILogger<TableBlogStorageService> logger)
   {
     string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
     _tableClient = new TableClient(connectionString, "mockblog");

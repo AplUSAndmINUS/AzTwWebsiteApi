@@ -9,17 +9,17 @@ using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Utils;
-using AzTwWebsiteApi.Models.Blog;
+using AzTwWebsiteApi.Models.BlogImage;
 
 namespace AzTwWebsiteApi.Services.Storage
 {
-    public class BlobStorageService : IBlobStorageService
+    public class BlobBlogImageStorageService : IBlobBlogImageStorageService
     {
         private readonly BlobServiceClient _blobServiceClient;
         private readonly IConfiguration _configuration;
-        private readonly ILogger<BlobStorageService> _logger;
+        private readonly ILogger<BlobBlogImageStorageService> _logger;
 
-        public BlobStorageService(IConfiguration configuration, ILogger<BlobStorageService> logger)
+        public BlobBlogImageStorageService(IConfiguration configuration, ILogger<BlobBlogImageStorageService> logger)
         {
             _configuration = configuration;
             _logger = logger;
