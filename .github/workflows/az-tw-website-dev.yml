@@ -215,25 +215,37 @@ jobs:
           --query "{State:state,RuntimeVersion:siteConfig.netFrameworkVersion,LinuxFxVersion:siteConfig.linuxFxVersion}" \
           -o json || echo "⚠️ Unable to get Function App status"
 
-        echo "📂 Checking deployment files..."
-        KUDU_URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net"
-        az rest --method get \
-          --uri "${KUDU_URL}/api/deployments/latest" \
-          --query "{status: status, author: author, message: message}" \
+        echo "📂 Checking deployment status..."
+        az functionapp deployment list \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[0]" \
           -o json || echo "⚠️ Unable to verify deployment"
 
+        echo "🔄 Syncing triggers..."
+        az functionapp deployment list-publishing-credentials \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "{publishingUserName:publishingUserName,publishingPassword:publishingPassword}" \
+          -o json > credentials.json
+
+        CREDS=$(cat credentials.json)
+        USERNAME=$(echo $CREDS | jq -r '.publishingUserName')
+        PASSWORD=$(echo $CREDS | jq -r '.publishingPassword')
+
         echo "🔄 Forcing trigger sync..."
-        az rest --method post \
-          --uri "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.azurewebsites.net/admin/host/synctriggers" \
-          --headers "Content-Type=application/json" || echo "⚠️ Function sync command failed"
+        curl -X POST \
+          "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions/synctriggers" \
+          --user "$USERNAME:$PASSWORD" || echo "⚠️ Function sync command failed"
 
         echo "⏳ Waiting for sync to complete..."
         sleep 45
 
         echo "📋 Listing functions..."
-        az rest --method get \
-          --uri "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions" \
-          --query "[].{name:name,language:language}" \
+        az functionapp function list \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[].{name:name}" \
           -o json > functions.json
 
         if [ -s functions.json ] && [ "$(cat functions.json)" != "[]" ]; then
@@ -242,18 +254,15 @@ jobs:
         else
           echo "❌ No functions found. Checking logs..."
           echo "📜 Recent function app logs:"
-          az webapp log tail \
+          az functionapp logs tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --provider http || echo "⚠️ Unable to retrieve logs"
-          
-          echo "📜 Kudu logs:"
-          az rest --method get \
-            --uri "${KUDU_URL}/api/logs/recent" \
-            --query "[].{message:message,level:level}" \
-            -o json || echo "⚠️ Unable to retrieve Kudu logs"
+            --limit 50 || echo "⚠️ Unable to retrieve logs"
           exit 1
         fi
+
+        # Clean up credentials file
+        rm -f credentials.json
     - name: 'Report Deployment Status'
       if: always()
       shell: bash
