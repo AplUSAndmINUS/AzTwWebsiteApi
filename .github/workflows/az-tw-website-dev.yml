@@ -216,33 +216,34 @@ jobs:
           -o json || echo "⚠️ Unable to get Function App status"
 
         echo "📂 Checking deployment status..."
-        az functionapp deployment list \
+        az webapp deployment list \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
           --query "[0]" \
           -o json || echo "⚠️ Unable to verify deployment"
 
-        echo "🔄 Syncing triggers..."
-        az functionapp deployment list-publishing-credentials \
+        echo "🔄 Getting publishing profile..."
+        PUBLISH_PROFILE=$(az webapp deployment list-publishing-profiles \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{publishingUserName:publishingUserName,publishingPassword:publishingPassword}" \
-          -o json > credentials.json
+          --xml)
 
-        CREDS=$(cat credentials.json)
-        USERNAME=$(echo $CREDS | jq -r '.publishingUserName')
-        PASSWORD=$(echo $CREDS | jq -r '.publishingPassword')
+        # Extract credentials from publishing profile
+        USERNAME=$(echo "$PUBLISH_PROFILE" | grep -o '<publishData><publishProfile.*userName="\([^"]*\)"' | sed 's/.*userName="\([^"]*\)".*/\1/')
+        PASSWORD=$(echo "$PUBLISH_PROFILE" | grep -o '<publishData><publishProfile.*userPWD="\([^"]*\)"' | sed 's/.*userPWD="\([^"]*\)".*/\1/')
 
         echo "🔄 Forcing trigger sync..."
         curl -X POST \
           "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions/synctriggers" \
-          --user "$USERNAME:$PASSWORD" || echo "⚠️ Function sync command failed"
+          --user "$USERNAME:$PASSWORD" \
+          -H "Content-Type: application/json" \
+          -H "Accept: application/json" || echo "⚠️ Function sync command failed"
 
         echo "⏳ Waiting for sync to complete..."
         sleep 45
 
         echo "📋 Listing functions..."
-        az functionapp function list \
+        az functionapp list-functions \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
           --query "[].{name:name}" \
@@ -254,15 +255,19 @@ jobs:
         else
           echo "❌ No functions found. Checking logs..."
           echo "📜 Recent function app logs:"
-          az functionapp logs tail \
+          az webapp log tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --provider http \
             --limit 50 || echo "⚠️ Unable to retrieve logs"
+
+          echo "📜 Deployment logs:"
+          az webapp log download \
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --log-file functions.log && cat functions.log || echo "⚠️ Unable to retrieve deployment logs"
           exit 1
         fi
-
-        # Clean up credentials file
-        rm -f credentials.json
     - name: 'Report Deployment Status'
       if: always()
       shell: bash
