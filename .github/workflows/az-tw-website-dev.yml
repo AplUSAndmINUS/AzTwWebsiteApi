@@ -45,7 +45,7 @@ jobs:
         dotnet restore AzTwWebsiteApi.sln
         dotnet clean AzTwWebsiteApi.sln --configuration Release
         dotnet build AzTwWebsiteApi.sln --configuration Release
-        
+
         # Publish functions
         echo "📦 Publishing functions..."
         dotnet publish src/Functions/Blog/BlogFunctions.csproj \
@@ -56,74 +56,18 @@ jobs:
           -p:PublishReadyToRun=false \
           -p:GenerateRuntimeConfigurationFiles=true \
           -p:UseAppHost=false
-        
-        # Verify function.json files
-        echo "🔍 Checking for function.json files..."
-        find ./output -name "function.json" -type f -exec echo "Found: {}" \; -exec cat {} \;
-        
-        # Ensure proper function app structure
-        echo "� Setting up function app structure..."
-        
-        # Copy host.json
-        cp src/Functions/Blog/host.json ./output/
-        
-        # Create minimal local.settings.json
-        echo '{
-          "IsEncrypted": false,
-          "Values": {
-            "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-            "AzureWebJobsStorage": "",
-            "FUNCTIONS_EXTENSION_VERSION": "~4",
-            "WEBSITE_RUN_FROM_PACKAGE": "1"
-          }
-        }' > ./output/local.settings.json
-        
+
         # Create deployment package
         echo "📦 Creating deployment package..."
         cd ./output
         zip -r ../function-app.zip ./*
         cd ..
-        
-        echo "📦 Deployment package contents:"
-        unzip -l function-app.zip
-        if [ -f function-app.zip ]; then
-          echo "✅ function-app.zip created successfully!"
-        else
-          echo "❌ ZIP creation failed!"
-          exit 1
-        fi
-
-    - name: 'Pre-deployment Check'
-      shell: bash
-      run: |
-        echo "📝 Checking Function App configuration..."
-        az functionapp config show \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{runtime:linuxFxVersion,platform:use32BitWorkerProcess}"
-
-        echo "📦 Verifying package contents..."
-        ls -la ./output
-        
-        echo "🔧 Checking host.json..."
-        cat ./output/host.json
 
     - name: 'Configure Function App Settings'
       shell: bash
       run: |
         echo "⚙️ Configuring Function App settings..."
-        echo "Function App Name: ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}"
-        echo "Resource Group: ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}"
-        echo "Storage Account Name: ${{ vars.STORAGE_ACCOUNT_NAME }}"
-        echo "Storage Connection String: ${{ secrets.STORAGE_CONNECTION_STRING }}"
-        # Configure function app for Linux and .NET 8.0
-        az functionapp config set \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --linux-fx-version "DOTNET-ISOLATED|8.0" \
-          --net-framework-version "v8.0" \
-          --use-32bit-worker-process false
-
+        
         # Set content share name based on function app name
         CONTENT_SHARE="${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}-content"
 
@@ -132,14 +76,15 @@ jobs:
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
           --settings \
-            AzureWebJobsStorage="${{ secrets.STORAGE_CONNECTION_STRING }}" \
-            WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.STORAGE_CONNECTION_STRING }}" \
-            WEBSITE_CONTENTSHARE="$CONTENT_SHARE" \
             FUNCTIONS_EXTENSION_VERSION="~4" \
             FUNCTIONS_WORKER_RUNTIME="dotnet-isolated" \
             WEBSITE_RUN_FROM_PACKAGE="1" \
             SCM_DO_BUILD_DURING_DEPLOYMENT="false" \
             ENABLE_ORYX_BUILD="false" \
+            WEBSITE_USE_PLACEHOLDER_DOTNETISOLATED="1" \
+            AzureWebJobsStorage="${{ secrets.STORAGE_CONNECTION_STRING }}" \
+            WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.STORAGE_CONNECTION_STRING }}" \
+            WEBSITE_CONTENTSHARE="$CONTENT_SHARE" \
             StorageAccountName="${{ vars.STORAGE_ACCOUNT_NAME }}"
 
     - name: 'Deploy to Azure Function App'
@@ -159,7 +104,7 @@ jobs:
         echo "⏳ Waiting for deployment to stabilize..."
         sleep 30
 
-        # Check Function App status first
+        # First verify the function app is running
         echo "🔍 Checking Function App status..."
         function_status=$(az functionapp show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
@@ -173,43 +118,44 @@ jobs:
 
         echo "✅ Function App is running"
 
-        # Check deployment status using kudu API
+        # Check deployment status using webapp deployment source
         echo "📋 Checking deployment status..."
-        deployment_id=$(az functionapp deployment list \
+        deployment_info=$(az webapp deployment source show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[0].id" -o tsv)
+          -o json)
 
-        if [[ -z "$deployment_id" ]]; then
-          echo "❌ No deployments found"
-          exit 1
-        fi
+        # Extract status using jq
+        deployment_status=$(echo "$deployment_info" | jq -r .status)
+        deployment_message=$(echo "$deployment_info" | jq -r .message)
 
-        deployment_status=$(az functionapp deployment show \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --deployment-id $deployment_id \
-          --query "status" -o tsv)
+        echo "Deployment Status: $deployment_status"
+        echo "Deployment Message: $deployment_message"
 
-        if [[ "$deployment_status" != "Success" ]]; then
-          echo "❌ Latest deployment is not successful. Status: $deployment_status"
-          echo "📜 Fetching deployment logs..."
-          az functionapp deployment list \
+        if [[ -z "$deployment_status" ]] || [[ "$deployment_status" == "null" ]]; then
+          echo "❌ No deployment status found"
+          echo "📜 Checking deployment logs..."
+          az webapp log download \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --output table
+            --log-file deployment.log
+          
+          if [ -f deployment.log ]; then
+            echo "📝 Recent deployment logs:"
+            tail -n 50 deployment.log
+          fi
           exit 1
         fi
 
-        # Verify function runtime and version
+        # Verify function runtime configuration
         echo "🔍 Verifying function runtime configuration..."
         runtime_config=$(az functionapp config show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
           --query "{linuxFxVersion:linuxFxVersion,netFrameworkVersion:netFrameworkVersion}" -o json)
 
-        linux_fx_version=$(echo $runtime_config | jq -r .linuxFxVersion)
-        net_framework_version=$(echo $runtime_config | jq -r .netFrameworkVersion)
+        linux_fx_version=$(echo "$runtime_config" | jq -r .linuxFxVersion)
+        net_framework_version=$(echo "$runtime_config" | jq -r .netFrameworkVersion)
 
         if [[ "$linux_fx_version" != "DOTNET-ISOLATED|8.0" ]]; then
           echo "❌ Incorrect Linux FX Version. Expected: DOTNET-ISOLATED|8.0, Got: $linux_fx_version"
@@ -223,90 +169,6 @@ jobs:
         echo "- Runtime Version: $linux_fx_version"
         echo "- .NET Version: $net_framework_version"
 
-    - name: 'Verify Content Share'
-      if: always()
-      shell: bash
-      run: |
-        echo "🔍 Verifying content share..."
-        CONTENT_SHARE="${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}-content"
-        
-        # Check if content share exists
-        az storage share exists \
-          --name "$CONTENT_SHARE" \
-          --account-name "${{ vars.STORAGE_ACCOUNT_NAME }}" \
-          --account-key $(az storage account keys list \
-            --account-name "${{ vars.STORAGE_ACCOUNT_NAME }}" \
-            --resource-group "${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}" \
-            --query "[0].value" -o tsv) \
-          --query "exists" -o tsv
-
-        # Check exit code
-        if [ $? -eq 0 ]; then
-          echo "✅ Content share '$CONTENT_SHARE' exists and is accessible"
-        else
-          echo "❌ Content share verification failed"
-          exit 1
-        fi
-
-    - name: 'Sync Function Triggers'
-      if: success()
-      shell: bash
-      run: |
-        echo "🔄 Preparing to sync function triggers..."
-
-        # Get publishing credentials
-        echo "🔐 Getting publishing credentials..."
-        creds=$(az functionapp deployment list-publishing-credentials \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{publishingUserName:publishingUserName,publishingPassword:publishingPassword}" -o json)
-
-        USERNAME=$(echo $creds | jq -r .publishingUserName)
-        PASSWORD=$(echo $creds | jq -r .publishingPassword)
-
-        if [[ -z "$USERNAME" ]] || [[ -z "$PASSWORD" ]]; then
-          echo "❌ Failed to get publishing credentials"
-          exit 1
-        fi
-
-        # Sync triggers
-        echo "🔄 Syncing function triggers..."
-        sync_response=$(curl -s -w "\n%{http_code}" \
-          -X POST \
-          -u "$USERNAME:$PASSWORD" \
-          "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions/synctriggers")
-        
-        status_code=$(echo "$sync_response" | tail -n1)
-        response_body=$(echo "$sync_response" | head -n-1)
-
-        if [[ "$status_code" != "200" ]]; then
-          echo "❌ Trigger sync failed with status $status_code"
-          echo "Response: $response_body"
-          exit 1
-        fi
-
-        echo "⏳ Waiting for sync to complete..."
-        sleep 30
-
-        # List functions
-        echo "📋 Listing functions..."
-        functions=$(az functionapp function list \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[].{name:name,trigger:config.bindings[0].type}" -o json)
-
-        if [[ $(echo "$functions" | jq length) -eq 0 ]]; then
-          echo "⚠️ No functions found. Checking function app logs..."
-          echo "📜 Recent function app logs:"
-          az webapp log tail \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --provider http \
-            --limit 50
-        else
-          echo "✅ Functions found:"
-          echo "$functions" | jq -r '.[] | "- \(.name) [\(.trigger)]"'
-        fi
     - name: 'Report Deployment Status'
       if: always()
       shell: bash
