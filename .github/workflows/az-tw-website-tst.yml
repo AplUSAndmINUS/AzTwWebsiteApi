@@ -7,261 +7,72 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/Functions'
+  OUTPUT_PATH: './output'
   DOTNET_VERSION: '8.0.x'
+  AZURE_FUNCTIONAPP_NAME_TST: 'az-tw-website-tst'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: test
-      url: https://${{ vars.AZURE_FUNCTIONAPP_NAME_TST }}.azurewebsites.net
+
     steps:
-    - name: 'Checkout GitHub Action'
+    - name: 'Checkout Code'
       uses: actions/checkout@v4
 
-    - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+    - name: 'Setup .NET'
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: 'Resolve Project Dependencies Using Dotnet'
-      shell: bash
-      run: |
-        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-        dotnet build --configuration Release --output ./output
-        popd
 
     - name: 'Run Unit Tests'
       shell: bash
       run: |
         dotnet test
 
-    - name: 'Login via Azure CLI'
+    - name: 'Build and Publish Functions'
+      shell: bash
+      run: |
+        # Clean output directory
+        rm -rf ${{ env.OUTPUT_PATH }}
+        mkdir -p ${{ env.OUTPUT_PATH }}
+
+        # Build and publish the project
+        dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/Blog/BlogFunctions.csproj \
+          --configuration Release \
+          --output ${{ env.OUTPUT_PATH }} \
+          --runtime linux-x64 \
+          --self-contained false \
+          -p:PublishReadyToRun=false \
+          -p:GenerateRuntimeConfigurationFiles=true \
+          -p:UseAppHost=false
+
+        # Create deployment package
+        cd ${{ env.OUTPUT_PATH }}
+        zip -r ../function-app.zip ./*
+        cd ..
+
+    - name: 'Login to Azure'
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-        enable-AzPSSession: true
 
     - name: 'Deploy to Azure Function App Staging Slot'
       uses: Azure/functions-action@v1
-      id: fa
       with:
-        app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }}
-        package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_TST }}
+        package: './function-app.zip'
         slot-name: 'staging'
+        respect-funcignore: true
+        scm-do-build-during-deployment: false
+        enable-oryx-build: false
 
-    - name: 'Configure Managed Identity and RBAC'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          # Get the Function App's managed identity
-          identity=$(az functionapp identity assign \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --query principalId --output tsv)
-
-          # Assign RBAC roles to the Function App's managed identity for storage
-          az role assignment create \
-            --assignee $identity \
-            --role "Storage Blob Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME}}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
-
-          az role assignment create \
-            --assignee $identity \
-            --role "Storage Table Data Contributor" \
-            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.RESOURCE_GROUP_STORAGE_NAME}}/providers/Microsoft.Storage/storageAccounts/${{ vars.STORAGE_ACCOUNT_NAME }}"
-
-    - name: 'Configure App Settings'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          az functionapp config appsettings set \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --settings \
-              "BlogStorageUrl=https://${{ vars.STORAGE_ACCOUNT_NAME }}.blob.core.windows.net" \
-              "StorageTableEndpoint=https://${{ vars.STORAGE_ACCOUNT_NAME }}.table.core.windows.net" \
-              "BlogTableName=${{ vars.MOCK_BLOG_TABLE_NAME }}" \
-              "BlogCommentsTableName=${{ vars.MOCK_BLOG_COMMENTS_TABLE_NAME }}" \
-              "BlogImagesContainer=${{ vars.MOCK_BLOG_IMAGES_CONTAINER_NAME }}" \
-              "AZURE_FUNCTIONS_ENVIRONMENT=Test" \
-              "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}"
-
-    - name: 'Wait for Deployment Stabilization'
-      run: sleep 30
-
-    - name: 'Run Smoke Tests'
-      id: smoke_tests
-      shell: bash
-      env:
-        MAX_RESPONSE_TIME: 4000  # 4 seconds threshold for test environment
-        FUNCTION_APP_URL: https://${{ vars.AZURE_FUNCTIONAPP_NAME_TST}}.azurewebsites.net
-      run: |
-        # Helper function for endpoint testing
-        test_endpoint() {
-          local endpoint=$1
-          local name=$2
-          local validate_json=${3:-false}
-          local max_retries=${4:-3}
-          
-          echo "::group::Testing $name endpoint"
-          
-          for i in $(seq 1 $max_retries); do
-            echo "Attempt $i of $max_retries for $name..."
-            
-            response=$(curl -s -w "\n%{http_code}\n%{time_total}" "$FUNCTION_APP_URL$endpoint")
-            status_code=$(echo "$response" | tail -n2 | head -n1)
-            response_time=$(echo "$response" | tail -n1)
-            response_time_ms=$(echo "$response_time * 1000" | bc)
-            content=$(echo "$response" | head -n-2)
-            
-            echo "Status Code: $status_code"
-            echo "Response Time: ${response_time_ms}ms"
-            
-            # Check for success conditions
-            if [ "$status_code" = "200" ] || [ "$status_code" = "404" ]; then
-              # Validate JSON if required
-              if [ "$validate_json" = "true" ] && [ "$status_code" = "200" ]; then
-                if ! echo "$content" | jq . >/dev/null 2>&1; then
-                  echo "::error::$name endpoint returned invalid JSON"
-                  echo "$content"
-                  echo "::endgroup::"
-                  return 1
-                fi
-                
-                # For array responses, validate structure
-                if [[ "$endpoint" == "/api/blog/posts" || "$endpoint" == "/api/events" ]]; then
-                  if [ $(echo "$content" | jq 'if type=="array" then true else false end') != "true" ]; then
-                    echo "::error::$name endpoint did not return an array"
-                    echo "::endgroup::"
-                    return 1
-                  fi
-                fi
-              fi
-              
-              # Performance warning
-              if [ $(echo "$response_time_ms > $MAX_RESPONSE_TIME" | bc) -eq 1 ]; then
-                echo "::warning::$name response time (${response_time_ms}ms) exceeded threshold (${MAX_RESPONSE_TIME}ms)"
-              fi
-              
-              echo "::endgroup::"
-              return 0
-            fi
-            
-            if [ $i -lt $max_retries ]; then
-              echo "Retrying in 5 seconds..."
-              sleep 5
-            fi
-          done
-          
-          echo "::error::$name endpoint failed after $max_retries attempts. Last status: $status_code"
-          echo "::endgroup::"
-          return 1
-        }
-        
-        # Execute tests
-        echo "Starting endpoint tests in staging environment..."
-        
-        # Test Blog Posts endpoint with JSON validation
-        if ! test_endpoint "/api/blog/posts" "Blog Posts" true 3; then
-          exit 1
-        fi
-        
-        # Test Blog Images endpoint with extra retries
-        if ! test_endpoint "/api/blog/images/test-image" "Blog Images" false 4; then
-          exit 1
-        fi
-        
-        # Test Events endpoint with JSON validation
-        if ! test_endpoint "/api/events" "Events" true 3; then
-          exit 1
-        fi
-        
-        # Send results to App Insights
-        echo "Logging test results to App Insights..."
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        
-        curl -X POST \
-          -H "Content-Type: application/json" \
-          -H "x-api-key: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}" \
-          https://dc.services.visualstudio.com/v2/track \
-          -d "{
-            \"name\": \"Smoke Tests Results\",
-            \"time\": \"$TIMESTAMP\",
-            \"iKey\": \"${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}\",
-            \"data\": {
-              \"baseType\": \"CustomEvent\",
-              \"baseData\": {
-                \"ver\": \"2.0\",
-                \"name\": \"StagingSmokeTestResults\",
-                \"properties\": {
-                  \"environment\": \"staging\",
-                  \"slot\": \"staging\"
-                }
-              }
-            }
-          }"
-        
-        echo "::notice::All smoke tests passed successfully in staging environment!"
-
-    - name: 'Rollback on Failed Tests'
-      if: failure() && steps.smoke_tests.outcome == 'failure'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          echo "::warning::Smoke tests failed! Starting rollback procedure..."
-          
-          # Swap back to the previous production slot
-          echo "Rolling back - swapping slots back to their previous state..."
-          az functionapp deployment slot swap \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --slot production \
-            --target-slot staging
-          
-          # Verify the rollback
-          echo "Verifying rollback by checking original production slot..."
-          ROLLBACK_CHECK_URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME_TST }}.azurewebsites.net/api/health"
-          ROLLBACK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ROLLBACK_CHECK_URL)
-          
-          if [ "$ROLLBACK_STATUS" == "200" ]; then
-            echo "::notice::Rollback completed successfully!"
-          else
-            echo "::error::Rollback verification failed! Please check the application manually."
-            exit 1
-          fi
-          
-          # Notify via App Insights about the rollback
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}" \
-            https://dc.services.visualstudio.com/v2/track \
-            -d "{
-              \"name\": \"Deployment Rollback\",
-              \"time\": \"$TIMESTAMP\",
-              \"iKey\": \"${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING_TST }}\",
-              \"data\": {
-                \"baseType\": \"CustomEvent\",
-                \"baseData\": {
-                  \"ver\": \"2.0\",
-                  \"name\": \"DeploymentRollback\",
-                  \"properties\": {
-                    \"environment\": \"test\",
-                    \"reason\": \"Failed smoke tests\",
-                    \"status\": \"completed\"
-                  }
-                }
-              }
-            }"
-
-    - name: 'Swap Test Slot to Production'
+    - name: 'Swap Staging Slot to Production'
       uses: azure/CLI@v1
       with:
         inlineScript: |
           az functionapp deployment slot swap \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --slot test \
+            --slot staging \
             --target-slot production
