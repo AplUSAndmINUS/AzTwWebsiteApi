@@ -21,11 +21,9 @@
     <ProjectReference Include="..\..\Shared\AzTwWebsiteApi.Shared.csproj" />
     <Compile Include="..\..\Shared\AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.cs" Link="AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.cs" />
     <Compile Include="..\..\Shared\AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.csproj" Link="AzTwWebsiteApi.Shared\AzTwWebsiteApi.Shared.csproj" />
-    <Compile Include="BlogFunctions.cs" />
-    <Compile Include="BlogFunctionsExtensions.cs" />
-    <Compile Include="src/Models/Blog/BlogPost.cs" Link="Models\BlogPost.cs" />
-    <Compile Include="src/Models/Blog/BlogPostComments.cs" Link="Models\BlogPostComments.cs" />
-    <Compile Include="src/Models/Blog/BlogImage.cs" Link="Models\BlogImage.cs" />
+    <Compile Include="../../Models/Blog/BlogPost.cs" Link="Models\BlogPost.cs" />
+    <Compile Include="../../Models/Blog/BlogPostComments.cs" Link="Models\BlogPostComments.cs" />
+    <Compile Include="../../Models/Blog/BlogImage.cs" Link="Models\BlogImage.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
