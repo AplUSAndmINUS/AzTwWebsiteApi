@@ -1,0 +1,78 @@
+name: Azure Function App Production Deployment
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/Functions'
+  OUTPUT_PATH: './output'
+  DOTNET_VERSION: '8.0.x'
+  AZURE_FUNCTIONAPP_NAME_PROD: 'az-tw-website-prod'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 'Checkout Code'
+      uses: actions/checkout@v4
+
+    - name: 'Setup .NET'
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 'Run Unit Tests'
+      shell: bash
+      run: |
+        dotnet test
+
+    - name: 'Build and Publish Functions'
+      shell: bash
+      run: |
+        # Clean output directory
+        rm -rf ${{ env.OUTPUT_PATH }}
+        mkdir -p ${{ env.OUTPUT_PATH }}
+
+        # Build and publish the project
+        dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/Blog/BlogFunctions.csproj \
+          --configuration Release \
+          --output ${{ env.OUTPUT_PATH }} \
+          --runtime linux-x64 \
+          --self-contained false \
+          -p:PublishReadyToRun=false \
+          -p:GenerateRuntimeConfigurationFiles=true \
+          -p:UseAppHost=false
+
+        # Create deployment package
+        cd ${{ env.OUTPUT_PATH }}
+        zip -r ../function-app.zip ./*
+        cd ..
+
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Deploy to Azure Function App Staging Slot'
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_PROD }}
+        package: './function-app.zip'
+        slot-name: 'staging'
+        respect-funcignore: true
+        scm-do-build-during-deployment: false
+        enable-oryx-build: false
+
+    - name: 'Swap Staging Slot to Production'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az functionapp deployment slot swap \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME_PROD }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --slot staging \
+            --target-slot production
