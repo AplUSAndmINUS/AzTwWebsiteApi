@@ -156,38 +156,72 @@ jobs:
       if: always()
       shell: bash
       run: |
-        echo "⏳ Verifying deployment status..."
-        deployment_status=$(az functionapp deployment source show \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "status" -o tsv)
+        echo "⏳ Waiting for deployment to stabilize..."
+        sleep 30
 
+        # Check Function App status first
+        echo "🔍 Checking Function App status..."
         function_status=$(az functionapp show \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
           --query "state" -o tsv)
 
-        echo "Deployment Status: $deployment_status"
-        echo "Function App Status: $function_status"
+        if [[ "$function_status" != "Running" ]]; then
+          echo "❌ Function App is not in Running state. Current state: $function_status"
+          exit 1
+        fi
 
-        if [[ "$deployment_status" != "Success" ]] || [[ "$function_status" != "Running" ]]; then
-          echo "❌ Deployment verification failed!"
-          echo "📜 Checking deployment logs..."
-          az webapp deployment list \
+        echo "✅ Function App is running"
+
+        # Check deployment status using kudu API
+        echo "📋 Checking deployment status..."
+        deployment_id=$(az functionapp deployment list \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "[0].id" -o tsv)
+
+        if [[ -z "$deployment_id" ]]; then
+          echo "❌ No deployments found"
+          exit 1
+        fi
+
+        deployment_status=$(az functionapp deployment show \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --deployment-id $deployment_id \
+          --query "status" -o tsv)
+
+        if [[ "$deployment_status" != "Success" ]]; then
+          echo "❌ Latest deployment is not successful. Status: $deployment_status"
+          echo "📜 Fetching deployment logs..."
+          az functionapp deployment list \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --query "[?status!='Success'].{id:id,status:status,message:message}" \
-            -o table
+            --output table
+          exit 1
+        fi
 
-          echo "📜 Checking application logs..."
-          az webapp log download \
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --log-file deployment.log && cat deployment.log || echo "⚠️ Unable to retrieve logs"
+        # Verify function runtime and version
+        echo "🔍 Verifying function runtime configuration..."
+        runtime_config=$(az functionapp config show \
+          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+          --query "{linuxFxVersion:linuxFxVersion,netFrameworkVersion:netFrameworkVersion}" -o json)
+
+        linux_fx_version=$(echo $runtime_config | jq -r .linuxFxVersion)
+        net_framework_version=$(echo $runtime_config | jq -r .netFrameworkVersion)
+
+        if [[ "$linux_fx_version" != "DOTNET-ISOLATED|8.0" ]]; then
+          echo "❌ Incorrect Linux FX Version. Expected: DOTNET-ISOLATED|8.0, Got: $linux_fx_version"
           exit 1
         fi
 
         echo "✅ Deployment verification successful!"
+        echo "📋 Deployment Summary:"
+        echo "- Function App State: $function_status"
+        echo "- Deployment Status: $deployment_status"
+        echo "- Runtime Version: $linux_fx_version"
+        echo "- .NET Version: $net_framework_version"
 
     - name: 'Verify Content Share'
       if: always()
@@ -218,59 +252,60 @@ jobs:
       if: success()
       shell: bash
       run: |
-        echo "🔄 Getting Function App status..."
-        az functionapp show \
+        echo "🔄 Preparing to sync function triggers..."
+
+        # Get publishing credentials
+        echo "🔐 Getting publishing credentials..."
+        creds=$(az functionapp deployment list-publishing-credentials \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{State:state,RuntimeVersion:siteConfig.netFrameworkVersion,LinuxFxVersion:siteConfig.linuxFxVersion}" \
-          -o json || echo "⚠️ Unable to get Function App status"
+          --query "{publishingUserName:publishingUserName,publishingPassword:publishingPassword}" -o json)
 
-        echo "📂 Checking deployment status..."
-        az functionapp deployment source show \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "{status:status,author:author,message:message,deployer:deployer}" \
-          -o json || echo "⚠️ Unable to verify deployment"
+        USERNAME=$(echo $creds | jq -r .publishingUserName)
+        PASSWORD=$(echo $creds | jq -r .publishingPassword)
 
-        echo "🔄 Waiting for deployment stability..."
-        sleep 30
+        if [[ -z "$USERNAME" ]] || [[ -z "$PASSWORD" ]]; then
+          echo "❌ Failed to get publishing credentials"
+          exit 1
+        fi
 
-        echo "🔄 Getting publishing credentials..."
-        creds=$(az webapp deployment list-publishing-credentials \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          -o json)
+        # Sync triggers
+        echo "🔄 Syncing function triggers..."
+        sync_response=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          -u "$USERNAME:$PASSWORD" \
+          "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions/synctriggers")
         
-        USERNAME=$(echo "$creds" | jq -r '.publishingUserName')
-        PASSWORD=$(echo "$creds" | jq -r '.publishingPassword')
+        status_code=$(echo "$sync_response" | tail -n1)
+        response_body=$(echo "$sync_response" | head -n-1)
 
-        echo "🔄 Forcing trigger sync..."
-        curl -X POST \
-          "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions/synctriggers" \
-          --user "$USERNAME:$PASSWORD" \
-          -H "Content-Type: application/json" \
-          -H "Accept: application/json" || echo "⚠️ Function sync command failed"
+        if [[ "$status_code" != "200" ]]; then
+          echo "❌ Trigger sync failed with status $status_code"
+          echo "Response: $response_body"
+          exit 1
+        fi
 
         echo "⏳ Waiting for sync to complete..."
         sleep 30
 
+        # List functions
         echo "📋 Listing functions..."
-        az functionapp function list \
+        functions=$(az functionapp function list \
           --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
           --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --output json > functions.json
+          --query "[].{name:name,trigger:config.bindings[0].type}" -o json)
 
-        if [ -s functions.json ] && jq -e 'length > 0' functions.json >/dev/null; then
-          echo "✅ Functions found:"
-          jq '.[].name' functions.json
-        else
-          echo "⚠️ No functions found. Checking application logs..."
+        if [[ $(echo "$functions" | jq length) -eq 0 ]]; then
+          echo "⚠️ No functions found. Checking function app logs..."
           echo "📜 Recent function app logs:"
           az webapp log tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --provider http \
-            --limit 50 || echo "⚠️ Unable to retrieve logs"
+            --limit 50
+        else
+          echo "✅ Functions found:"
+          echo "$functions" | jq -r '.[] | "- \(.name) [\(.trigger)]"'
         fi
     - name: 'Report Deployment Status'
       if: always()
