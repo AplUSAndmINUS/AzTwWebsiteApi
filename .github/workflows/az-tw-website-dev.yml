@@ -213,34 +213,43 @@ jobs:
           --query "{State:state,RuntimeVersion:siteConfig.netFrameworkVersion,LinuxFxVersion:siteConfig.linuxFxVersion}" \
           -o json || echo "⚠️ Unable to get Function App status"
 
-        echo "📂 Verifying deployment in Kudu..."
+        echo "📂 Checking deployment files..."
         KUDU_URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net"
-        az webapp deployment list \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-          --query "[0]" || echo "⚠️ Unable to verify deployment"
+        az rest --method get \
+          --uri "${KUDU_URL}/api/deployments/latest" \
+          --query "{status: status, author: author, message: message}" \
+          -o json || echo "⚠️ Unable to verify deployment"
 
         echo "🔄 Forcing trigger sync..."
-        az functionapp function sync \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} || echo "⚠️ Function sync command failed"
+        az rest --method post \
+          --uri "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.azurewebsites.net/admin/host/synctriggers" \
+          --headers "Content-Type=application/json" || echo "⚠️ Function sync command failed"
 
         echo "⏳ Waiting for sync to complete..."
         sleep 45
 
         echo "📋 Listing functions..."
-        FUNCTIONS_LIST=$(az webapp list-functions \
-          --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
-          --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }}) || echo "⚠️ Unable to list functions"
-        
-        if [ -n "$FUNCTIONS_LIST" ]; then
-          echo "✅ Functions found: $FUNCTIONS_LIST"
+        az rest --method get \
+          --uri "https://${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/functions" \
+          --query "[].{name:name,language:language}" \
+          -o json > functions.json
+
+        if [ -s functions.json ] && [ "$(cat functions.json)" != "[]" ]; then
+          echo "✅ Functions found:"
+          cat functions.json
         else
           echo "❌ No functions found. Checking logs..."
-          az functionapp logs tail \
+          echo "📜 Recent function app logs:"
+          az webapp log tail \
             --name ${{ vars.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --limit 50 || echo "⚠️ Unable to retrieve logs"
+            --provider http || echo "⚠️ Unable to retrieve logs"
+          
+          echo "📜 Kudu logs:"
+          az rest --method get \
+            --uri "${KUDU_URL}/api/logs/recent" \
+            --query "[].{message:message,level:level}" \
+            -o json || echo "⚠️ Unable to retrieve Kudu logs"
           exit 1
         fi
 
