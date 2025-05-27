@@ -70,7 +70,6 @@ namespace AzTwWebsiteApi.Functions.Blog
           pageSize = Math.Min(requestedPageSize, maxPageSize);
       }
 
-
       try
       {
         var (posts, newContinuationToken) = await _tableStorageService.GetPaginatedAsync<BlogPost>(pageSize, continuationToken);

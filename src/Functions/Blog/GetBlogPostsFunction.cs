@@ -7,7 +7,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Azure;
 using Azure.Data.Tables;
-using AzTwWebsiteApi.Utils;
+using AzTwWebsiteApi.Services.Utils;
 using AzTwWebsiteApi.Models.Blog;
 
 // Commenting out for now due to simple structure functions
