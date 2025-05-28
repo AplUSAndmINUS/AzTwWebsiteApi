@@ -36,12 +36,6 @@ public static void ConfigureServices(IServiceCollection services, IConfiguration
   services.AddSingleton<ITableStorageService>(provider =>
   new TableStorageService(credential, blogCommentsTableName)); 
 
-  services.AddSingleton<IBlogPostTableService>(provider =>
-    new TableStorageService(credential, blogPostsTableName));
-  services.AddSingleton<IBlogCommentsTableService>(provider =>
-    new TableStorageService(credential, blogCommentsTableName));
-
-
   // TODO: Register Email Sending
   // services.Configure<SendGridSettings>(configuration.GetSection("SendGridSettings"));
   // services.AddSingleton<IEmailService, SendGridEmailService>();

@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
@@ -7,15 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="AzTwWebsiteApi.Shared" Version="1.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\Shared\AzTwWebsiteApi.Shared.csproj" />
-  </ItemGroup>
-  <ItemGroup>
+    <Compile Include="AzTwWebsiteApi.Services.Utils/Constants.cs" />
     <Compile Include="AzTwWebsiteApi.Services.Services.cs" />
     <Compile Include="AzTwWebsiteApi.Services.BlogStorageService.cs" />
     <Compile Include="AzTwWebsiteApi.Services.TableStorageService.cs" />
+    <Compile Include="AzTwWebsiteApi.Services.Blog.BlogService.cs" />
+  </ItemGroup>
+</Project>

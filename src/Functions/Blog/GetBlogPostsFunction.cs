@@ -1,11 +1,10 @@
 // C# app- GetBlogPostsFunction.cs
-// Endpoint: api/blog/posts
+// Endpoint: _api/blog/posts
 
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using Azure;
 using Azure.Data.Tables;
 using Azure.Identity;
 using AzTwWebsiteApi.Services.Utils;
