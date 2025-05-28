@@ -13,7 +13,7 @@ namespace AzTwWebsiteApi.Models.Book
     public required string[] ImageUrls { get; set; }
     public required bool IsPublished { get; set; }
     public required string Summary { get; set; }
-    public string AuthorId { get; set; }
+    public required string AuthorId { get; set; }
     public required string FeaturedImageUrl { get; set; } // URL of the featured image for the post
     public List<string> AuthorIds { get; set; } = new(); // List of author IDs for multi-author support
     public List<string> CategoryIds { get; set; } = new(); // Store only category IDs
