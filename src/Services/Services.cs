@@ -7,9 +7,9 @@ using Azure.Identity;
 // using AzTwWebsiteApi.Services.Email;
 
 // get the standard mock tables and blog storage account names
-string blogCommentsTableName = GetEnvironmentVariable("MOCK_BLOG_COMMENTS_TABLE_NAME");
 string blogPostsTableName = GetEnvironmentVariable("MOCK_BLOG_POSTS_TABLE_NAME");
-string blogImagesContainerName = GetEnvironmentVariable("MOCK_BLOG_IMAGES_CONTAINER_NAME");
+// string blogCommentsTableName = GetEnvironmentVariable("MOCK_BLOG_COMMENTS_TABLE_NAME");
+// string blogImagesContainerName = GetEnvironmentVariable("MOCK_BLOG_IMAGES_CONTAINER_NAME");
 
 public static string GetEnvironmentVariable(string key)
 {
@@ -28,13 +28,13 @@ public static void ConfigureServices(IServiceCollection services, IConfiguration
   var credential = new DefaultAzureCredential();
   services.AddSingleton<TokenCredential>(credential);
 
-  services.AddSingleton<IBlobStorageService>(provider =>
-  new BlobStorageService(credential, blogImagesContainerName));
+  // services.AddSingleton<IBlobStorageService>(provider =>
+  // new BlobStorageService(credential, blogImagesContainerName));
 
   services.AddSingleton<ITableStorageService>(provider =>
   new TableStorageService(credential, blogPostsTableName)); 
-  services.AddSingleton<ITableStorageService>(provider =>
-  new TableStorageService(credential, blogCommentsTableName)); 
+  // services.AddSingleton<ITableStorageService>(provider =>
+  // new TableStorageService(credential, blogCommentsTableName)); 
 
   // TODO: Register Email Sending
   // services.Configure<SendGridSettings>(configuration.GetSection("SendGridSettings"));

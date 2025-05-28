@@ -6,11 +6,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
   <ItemGroup>
-    <Compile Include="AzTwWebsiteApi.Services.Utils/Constants.cs" />
-    <Compile Include="AzTwWebsiteApi.Services.Services.cs" />
-    <Compile Include="AzTwWebsiteApi.Services.BlogStorageService.cs" />
-    <Compile Include="AzTwWebsiteApi.Services.TableStorageService.cs" />
-    <Compile Include="AzTwWebsiteApi.Services.Blog.BlogService.cs" />
+    <PackageReference Include="Azure.Data.Tables" Version="12.11.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Models\AzTwWebsiteApi.Models.csproj" />
   </ItemGroup>
 </Project>

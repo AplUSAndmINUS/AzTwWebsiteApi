@@ -1,10 +1,13 @@
-<Project Sdk="Microsoft.NET.Sdk">  <PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-  </PropertyGroup>  <ItemGroup>
+  </PropertyGroup>
+  
+  <ItemGroup>
     <PackageReference Include="Azure.Data.Tables" Version="12.11.0" />
     <PackageReference Include="Azure.Identity" Version="1.12.0" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
@@ -16,13 +19,17 @@
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage" Version="6.3.0" />
     <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.2.2" />
     <PackageReference Include="Microsoft.Extensions.Telemetry" Version="9.5.0" />
-    <PackageReference Include="AzTwWebsiteApi.Services" Version="1.0.0" />
-    <PackageReference Include="AzTwWebsiteApi.Services.Utils" Version="1.0.0" />
     <PackageReference Include="System.Text.Json" Version="7.0.2" />
   </ItemGroup>
+
+  <!-- Replace PackageReferences with ProjectReferences -->
   <ItemGroup>
-    <Compile Include="../../Models/Blog/Blog.cs" Link="Models\Blog.cs" />
+    <ProjectReference Include="..\..\Services\AzTwWebsiteApi.Services.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Models\AzTwWebsiteApi.Models.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

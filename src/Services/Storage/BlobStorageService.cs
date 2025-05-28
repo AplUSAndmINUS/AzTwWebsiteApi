@@ -1,165 +1,166 @@
-```csharp
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
-using System.Threading.Tasks;
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using AzTwWebsiteApi.Utils;
-using AzTwWebsiteApi.Models.BlogImage;
+// // TODO: Create the Blob Storage Service interface
 
-namespace AzTwWebsiteApi.Services.Storage
-{
-    public class BlobBlogImageStorageService : IBlobBlogImageStorageService
-    {
-        private readonly BlobServiceClient _blobServiceClient;
-        private readonly IConfiguration _configuration;
-        private readonly ILogger<BlobBlogImageStorageService> _logger;
+// ```csharp
+// using System;
+// using System.Collections.Generic;
+// using System.IO;
+// using System.Text.Json;
+// using System.Threading.Tasks;
+// using Azure.Storage.Blobs;
+// using Azure.Storage.Blobs.Models;
+// using Microsoft.Extensions.Configuration;
+// using Microsoft.Extensions.Logging;
+// using AzTwWebsiteApi.Utils;
+// using AzTwWebsiteApi.Models.BlogImage;
 
-        public BlobBlogImageStorageService(IConfiguration configuration, ILogger<BlobBlogImageStorageService> logger)
-        {
-            _configuration = configuration;
-            _logger = logger;
-            var credential = ManagedIdentityConfig.GetCredential(configuration);
-            var storageAccountUrl = configuration["StorageAccountUrl"];
-            _blobServiceClient = new BlobServiceClient(new Uri(storageAccountUrl), credential);
-        }
+// namespace AzTwWebsiteApi.Services.Storage
+// {
+//     public class BlobBlogImageStorageService : IBlobBlogImageStorageService
+//     {
+//         private readonly BlobServiceClient _blobServiceClient;
+//         private readonly IConfiguration _configuration;
+//         private readonly ILogger<BlobBlogImageStorageService> _logger;
 
-        public async Task<BlogPost> GetBlogPostAsync(string id)
-        {
-            try
-            {
-                var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
-                var blobClient = containerClient.GetBlobClient($"{id}.json");
+//         public BlobBlogImageStorageService(IConfiguration configuration, ILogger<BlobBlogImageStorageService> logger)
+//         {
+//             _configuration = configuration;
+//             _logger = logger;
+//             var credential = ManagedIdentityConfig.GetCredential(configuration);
+//             var storageAccountUrl = configuration["StorageAccountUrl"];
+//             _blobServiceClient = new BlobServiceClient(new Uri(storageAccountUrl), credential);
+//         }
 
-                if (!await blobClient.ExistsAsync())
-                {
-                    _logger.LogWarning("Blog post with ID {Id} not found", id);
-                    return null;
-                }
+//         public async Task<BlogPost> GetBlogPostAsync(string id)
+//         {
+//             try
+//             {
+//                 var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
+//                 var blobClient = containerClient.GetBlobClient($"{id}.json");
 
-                var response = await blobClient.DownloadContentAsync();
-                var content = response.Value.Content.ToString();
-                return JsonSerializer.Deserialize<BlogPost>(content);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving blog post with ID {Id}", id);
-                throw;
-            }
-        }
+//                 if (!await blobClient.ExistsAsync())
+//                 {
+//                     _logger.LogWarning("Blog post with ID {Id} not found", id);
+//                     return null;
+//                 }
 
-        public async Task<IEnumerable<BlogPost>> GetBlogPostsAsync()
-        {
-            try
-            {
-                var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
-                var posts = new List<BlogPost>();
+//                 var response = await blobClient.DownloadContentAsync();
+//                 var content = response.Value.Content.ToString();
+//                 return JsonSerializer.Deserialize<BlogPost>(content);
+//             }
+//             catch (Exception ex)
+//             {
+//                 _logger.LogError(ex, "Error retrieving blog post with ID {Id}", id);
+//                 throw;
+//             }
+//         }
 
-                await foreach (var blobItem in containerClient.GetBlobsAsync())
-                {
-                    var blobClient = containerClient.GetBlobClient(blobItem.Name);
-                    var response = await blobClient.DownloadContentAsync();
-                    var content = response.Value.Content.ToString();
-                    posts.Add(JsonSerializer.Deserialize<BlogPost>(content));
-                }
+//         public async Task<IEnumerable<BlogPost>> GetBlogPostsAsync()
+//         {
+//             try
+//             {
+//                 var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
+//                 var posts = new List<BlogPost>();
 
-                return posts;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving blog posts");
-                throw;
-            }
-        }
+//                 await foreach (var blobItem in containerClient.GetBlobsAsync())
+//                 {
+//                     var blobClient = containerClient.GetBlobClient(blobItem.Name);
+//                     var response = await blobClient.DownloadContentAsync();
+//                     var content = response.Value.Content.ToString();
+//                     posts.Add(JsonSerializer.Deserialize<BlogPost>(content));
+//                 }
 
-        public async Task<BlogImage> GetBlogImageAsync(string id)
-        {
-            try
-            {
-                var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogImages);
-                var blobClient = containerClient.GetBlobClient(id);
+//                 return posts;
+//             }
+//             catch (Exception ex)
+//             {
+//                 _logger.LogError(ex, "Error retrieving blog posts");
+//                 throw;
+//             }
+//         }
 
-                if (!await blobClient.ExistsAsync())
-                {
-                    _logger.LogWarning("Blog image with ID {Id} not found", id);
-                    return null;
-                }
+//         public async Task<BlogImage> GetBlogImageAsync(string id)
+//         {
+//             try
+//             {
+//                 var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogImages);
+//                 var blobClient = containerClient.GetBlobClient(id);
 
-                var properties = await blobClient.GetPropertiesAsync();
+//                 if (!await blobClient.ExistsAsync())
+//                 {
+//                     _logger.LogWarning("Blog image with ID {Id} not found", id);
+//                     return null;
+//                 }
+
+//                 var properties = await blobClient.GetPropertiesAsync();
                 
-                return new BlogImage
-                {
-                    Id = id,
-                    FileName = Path.GetFileName(blobClient.Name),
-                    ContentType = properties.Value.ContentType,
-                    FileSize = properties.Value.ContentLength,
-                    Url = blobClient.Uri.ToString(),
-                    UploadDate = properties.Value.LastModified.DateTime,
-                    BlogPostId = properties.Value.Metadata.TryGetValue("BlogPostId", out var postId) ? postId : null,
-                    AltText = properties.Value.Metadata.TryGetValue("AltText", out var altText) ? altText : null,
-                    Caption = properties.Value.Metadata.TryGetValue("Caption", out var caption) ? caption : null
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving blog image with ID {Id}", id);
-                throw;
-            }
-        }
+//                 return new BlogImage
+//                 {
+//                     Id = id,
+//                     FileName = Path.GetFileName(blobClient.Name),
+//                     ContentType = properties.Value.ContentType,
+//                     FileSize = properties.Value.ContentLength,
+//                     Url = blobClient.Uri.ToString(),
+//                     UploadDate = properties.Value.LastModified.DateTime,
+//                     BlogPostId = properties.Value.Metadata.TryGetValue("BlogPostId", out var postId) ? postId : null,
+//                     AltText = properties.Value.Metadata.TryGetValue("AltText", out var altText) ? altText : null,
+//                     Caption = properties.Value.Metadata.TryGetValue("Caption", out var caption) ? caption : null
+//                 };
+//             }
+//             catch (Exception ex)
+//             {
+//                 _logger.LogError(ex, "Error retrieving blog image with ID {Id}", id);
+//                 throw;
+//             }
+//         }
 
-        public async Task SetBlogPostAsync(BlogPost post)
-        {
-            try
-            {
-                var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
-                await containerClient.CreateIfNotExistsAsync();
+//         public async Task SetBlogPostAsync(BlogPost post)
+//         {
+//             try
+//             {
+//                 var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
+//                 await containerClient.CreateIfNotExistsAsync();
 
-                var blobClient = containerClient.GetBlobClient($"{post.Id}.json");
-                var content = JsonSerializer.Serialize(post);
+//                 var blobClient = containerClient.GetBlobClient($"{post.Id}.json");
+//                 var content = JsonSerializer.Serialize(post);
                 
-                await blobClient.UploadAsync(BinaryData.FromString(content), overwrite: true);
+//                 await blobClient.UploadAsync(BinaryData.FromString(content), overwrite: true);
                 
-                _logger.LogInformation("Successfully uploaded blog post with ID {Id}", post.Id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting blog post with ID {Id}", post.Id);
-                throw;
-            }
-        }
+//                 _logger.LogInformation("Successfully uploaded blog post with ID {Id}", post.Id);
+//             }
+//             catch (Exception ex)
+//             {
+//                 _logger.LogError(ex, "Error setting blog post with ID {Id}", post.Id);
+//                 throw;
+//             }
+//         }
 
-        public async Task SetBlogImageAsync(string id, Stream imageStream, string contentType, Dictionary<string, string> metadata)
-        {
-            try
-            {
-                var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogImages);
-                await containerClient.CreateIfNotExistsAsync();
+//         public async Task SetBlogImageAsync(string id, Stream imageStream, string contentType, Dictionary<string, string> metadata)
+//         {
+//             try
+//             {
+//                 var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogImages);
+//                 await containerClient.CreateIfNotExistsAsync();
 
-                var blobClient = containerClient.GetBlobClient(id);
+//                 var blobClient = containerClient.GetBlobClient(id);
                 
-                var options = new BlobUploadOptions
-                {
-                    Metadata = metadata,
-                    HttpHeaders = new BlobHttpHeaders
-                    {
-                        ContentType = contentType
-                    }
-                };
+//                 var options = new BlobUploadOptions
+//                 {
+//                     Metadata = metadata,
+//                     HttpHeaders = new BlobHttpHeaders
+//                     {
+//                         ContentType = contentType
+//                     }
+//                 };
 
-                await blobClient.UploadAsync(imageStream, options);
+//                 await blobClient.UploadAsync(imageStream, options);
                 
-                _logger.LogInformation("Successfully uploaded blog image with ID {Id}", id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting blog image with ID {Id}", id);
-                throw;
-            }
-        }
-    }
-}
-```
+//                 _logger.LogInformation("Successfully uploaded blog image with ID {Id}", id);
+//             }
+//             catch (Exception ex)
+//             {
+//                 _logger.LogError(ex, "Error setting blog image with ID {Id}", id);
+//                 throw;
+//             }
+//         }
+//     }
+// }

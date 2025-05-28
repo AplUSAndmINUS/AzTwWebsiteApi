@@ -38,7 +38,7 @@ namespace AzTwWebsiteApi.Functions.Blog
   public class BlogService : IBlogService
   {
     private readonly ILogger<BlogService> _logger;
-    private readonly ITableStorageService _tableStorageService;
+    private readonly TableClient _tableClient;
     private readonly IBlobStorageService _blobStorageService;
 
     public BlogService(ILogger<BlogService> logger,
@@ -46,14 +46,14 @@ namespace AzTwWebsiteApi.Functions.Blog
                        IBlobStorageService blobStorageService)
     {
       _logger = logger;
-      _tableStorageService = tableStorageService;
+      _tableClient = tableStorageService.GetTableClient("BlogPosts");
       _blobStorageService = blobStorageService;
     }
 
     // Get all blog posts
     public async Task<IEnumerable<BlogPost>> GetBlogPostsAsync(int pageSize = 25, string continuationToken = null)
     {
-      _logger.LogInformation("C# HTTP trigger function processed a request to get blog posts.");
+      _logger.LogInformation("Fetching blog posts from Azure Table Storage...");
       var posts = new List<BlogPost>();
       int maxPageSize = 100; // Define a maximum page size to prevent excessive queries
 
@@ -62,20 +62,13 @@ namespace AzTwWebsiteApi.Functions.Blog
 
       try
       {
-        // Don't need the continuation token for this query as we are using pagination
-        // // Check for continuation token in query parameters
-        // var newContinuationToken = await _tableStorageService.GetPaginatedAsync<BlogPost>(pageSize, continuationToken);
-
-        // if (newContinuationToken == null)
-        // {
-        //   _logger.LogInformation("No continuation token provided or no more posts to retrieve.");
-        //   return posts; // Return empty list if no posts found
-        // }
-
         _logger.LogInformation($"Retrieving blog posts with page size: {pageSize}, continuation token: {newContinuationToken}");
 
         // Retrieve blog posts using the continuation token
-        await foreach (var entity in _tableClient.QueryAsync<BlogPost>(filter: null, maxPerPage: pageSize, cancellationToken: default))
+        await foreach (var entity in _tableClient.QueryAsync<BlogPost>(
+            filter: null, 
+            maxPerPage: pageSize,
+            continuationToken: continuationToken))
         {
           // Add the post to the list regardless of its publication status (for now)
           posts.Add(entity);
