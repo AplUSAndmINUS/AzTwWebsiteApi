@@ -2,25 +2,25 @@
 // Endpoints: 
 
 // *BLOG POSTS*
-// api/blog/posts
-// api/blog/posts/{id}
-// api/blog/posts/{id}/update
+// _api/blog/posts
+// _api/blog/posts/{id}
+// _api/blog/posts/{id}/update
 
 // *BLOG IMAGES*
-// api/blog/images
-// api/blog/images/{id}                             
-// api/blog/images/{id}/delete
-// api/blog/images/{id}/update
+// _api/blog/images
+// _api/blog/images/{id}                             
+// _api/blog/images/{id}/delete
+// _api/blog/images/{id}/update
 
-// *BLOG COMMENTS*`
-// api/blog/posts/{id}/comments
-// api/blog/posts/{id}/comments/{commentId}
-// api/blog/posts/{id}/comments/{commentId}/delete
-// api/blog/posts/{id}/comments/{commentId}/update
-// api/blog/posts/{id}/comments/{commentId}/reactions
-// api/blog/posts/{id}/comments/{commentId}/replies
-// api/blog/posts/{id}/comments/{commentId}/replies/{replyId}
-// api/blog/posts/{id}/comments/{commentId}/replies/{replyId}/reactions
+// *BLOG COMMENTS*
+// _api/blog/posts/{id}/comments
+// _api/blog/posts/{id}/comments/{commentId}
+// _api/blog/posts/{id}/comments/{commentId}/delete
+// _api/blog/posts/{id}/comments/{commentId}/update
+// _api/blog/posts/{id}/comments/{commentId}/reactions
+// _api/blog/posts/{id}/comments/{commentId}/replies
+// _api/blog/posts/{id}/comments/{commentId}/replies/{replyId}
+// _api/blog/posts/{id}/comments/{commentId}/replies/{replyId}/reactions
 
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
@@ -35,7 +35,7 @@ using AzTwWebsiteApi.Services.Blog;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
-  public class BlogService
+  public class BlogService : IBlogService
   {
     private readonly ILogger<BlogService> _logger;
     private readonly ITableStorageService _tableStorageService;
@@ -50,73 +50,54 @@ namespace AzTwWebsiteApi.Functions.Blog
       _blobStorageService = blobStorageService;
     }
 
-    // Get all blog posts, paginated at 25 per each
-    // Endpoint: api/blog/posts
-    // Query parameter: pageSize (optional, default 25, max 100)
-    [Function("GetBlogPosts")]
-    public async Task<HttpResponseData> GetBlogPosts(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequestData req)
+    // Get all blog posts
+    public async Task<IEnumerable<BlogPost>> GetBlogPostsAsync(int pageSize = 25, string continuationToken = null)
     {
-      _logger.LogInformation("C# HTTP trigger function processed a request for blog posts.");
+      _logger.LogInformation("C# HTTP trigger function processed a request to get blog posts.");
+      var posts = new List<BlogPost>();
+      int maxPageSize = 100; // Define a maximum page size to prevent excessive queries
 
-      int defaultPageSize = 25;
-      int maxPageSize = 100; // Prevent excessive queries
-      int pageSize = defaultPageSize;
-
-      if (req.Query.ContainsKey("pageSize") && 
-          int.TryParse(req.Query["pageSize"], out int requestedPageSize) && requestedPageSize > 0)
-      {
-          // Enforce upper limit to prevent excessive queries
-          pageSize = Math.Min(requestedPageSize, maxPageSize);
-      }
+      // Enforce upper limit to prevent excessive queries
+      pageSize = Math.Min(pageSize, maxPageSize);
 
       try
       {
-        var (posts, newContinuationToken) = await _tableStorageService.GetPaginatedAsync<BlogPost>(pageSize, continuationToken);
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { posts, continuationToken = newContinuationToken });
-        return response;
+        // Don't need the continuation token for this query as we are using pagination
+        // // Check for continuation token in query parameters
+        // var newContinuationToken = await _tableStorageService.GetPaginatedAsync<BlogPost>(pageSize, continuationToken);
+
+        // if (newContinuationToken == null)
+        // {
+        //   _logger.LogInformation("No continuation token provided or no more posts to retrieve.");
+        //   return posts; // Return empty list if no posts found
+        // }
+
+        _logger.LogInformation($"Retrieving blog posts with page size: {pageSize}, continuation token: {newContinuationToken}");
+
+        // Retrieve blog posts using the continuation token
+        await foreach (var entity in _tableClient.QueryAsync<BlogPost>(filter: null, maxPerPage: pageSize, cancellationToken: default))
+        {
+          // Add the post to the list regardless of its publication status (for now)
+          posts.Add(entity);
+        }
       }
-      catch (Exception ex)
+
+      if (posts.Count == 0)
       {
-        _logger.LogError(ex, "Error retrieving blog posts");
-        var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-        await errorResponse.WriteStringAsync("An error occurred while retrieving blog posts.");
-        return errorResponse;
+        _logger.LogInformation("No blog posts found.");
       }
+      else
+      {
+        _logger.LogInformation($"Retrieved {posts.Count} blog posts.");
+      }
+
+      return posts;
     }
 
-    // Get a specific blog post by ID
-    // Endpoint: api/blog/posts/{id}
-    [Function("GetBlogPostById")]
-    public async Task<HttpResponseData> GetBlogPostById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts/{id}")] HttpRequestData req,
-        string id)
+    catch (Exception ex)
     {
-      _logger.LogInformation($"C# HTTP trigger function processed a request for blog post with ID: {id}");
-
-      try
-      {
-        var post = await _tableStorageService.GetAsync<BlogPost>(authorId, id);
-        if (post == null)
-        {
-          var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
-          await notFoundResponse.WriteStringAsync("Blog post not found.");
-          return notFoundResponse;
-        }
-
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(post);
-        return response;
-      }
-      catch (Exception ex)
-      {
-        _logger.LogError(ex, "Error retrieving blog post with ID: {id}, Requester IP: {ip}", id, req.HttpContext.Connection.RemoteIpAddress);
-        _logger.LogError("Exception details: {exception}", ex.ToString());
-        var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-        await errorResponse.WriteStringAsync("An error occurred while retrieving the blog post.");
-        return errorResponse;
-      }
+      _logger.LogError(ex, "Error retrieving blog posts");
+      throw; // Let the caller handle the exception
     }
   }
 }

@@ -7,12 +7,9 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Azure;
 using Azure.Data.Tables;
+using Azure.Identity;
 using AzTwWebsiteApi.Services.Utils;
 using AzTwWebsiteApi.Models.Blog;
-
-// Commenting out for now due to simple structure functions
-// using AzTwWebsiteApi.Models;
-// using AzTwWebsiteApi.Services;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
@@ -27,9 +24,9 @@ namespace AzTwWebsiteApi.Functions.Blog
 
     [Function("GetBlogPosts")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "_api/blog/posts")] HttpRequestData req)
     {
-      _logger.LogFunctionStart(Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
+      _logger.LogInformation("Function Start: {Module} - {Function}", Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
       _logger.LogInformation("C# HTTP trigger function processed a request.");
 
       // Return an empty array for now
@@ -38,7 +35,7 @@ namespace AzTwWebsiteApi.Functions.Blog
       var response = req.CreateResponse(HttpStatusCode.OK);
       await response.WriteAsJsonAsync(posts);
 
-      _logger.LogFunctionComplete(Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
+      _logger.LogInformation("Function Complete: {Module} - {Function}", Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
       return response;
     }
   }
