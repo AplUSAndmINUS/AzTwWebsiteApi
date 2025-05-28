@@ -1,29 +1,37 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Azure.Functions.Worker;
-using Azure.Data.Tables;
+using AzTwWebsiteApi.Models.Blog;
 using AzTwWebsiteApi.Services.Blog;
 using AzTwWebsiteApi.Services.Storage;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
-    .ConfigureServices(services =>
+    .ConfigureAppConfiguration((context, config) =>
     {
-        services.AddLogging();
+        config.SetBasePath(context.HostingEnvironment.ContentRootPath)
+              .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
+              .AddEnvironmentVariables();
+    })
+    .ConfigureServices((context, services) =>
+    {
+        // Add Azure Functions specific services
         services.ConfigureFunctionsApplicationInsights();
         services.AddHttpClient();
 
-        // Register your services for dependency injection
+        // Add our custom services
         services.AddScoped<IBlogService, BlogService>();
-        services.AddScoped<ITableStorageService, TableStorageService>();
-        services.AddScoped<IBlobStorageService, BlobStorageService>();
 
-        // Configure Azure Table Storage
-        services.AddSingleton(sp =>
+        // Configure Azure Table Storage with connection string
+        services.AddSingleton<ITableStorageService<BlogPost>>(sp =>
         {
-            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-            return new TableServiceClient(connectionString);
+            var logger = sp.GetRequiredService<ILogger<TableStorageService<BlogPost>>>();
+            var tableName = Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "blogposts";
+            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
+                ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
+            return new TableStorageService<BlogPost>(connectionString, tableName, logger);
         });
     })
     .Build();

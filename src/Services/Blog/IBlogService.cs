@@ -2,12 +2,15 @@ using AzTwWebsiteApi.Models.Blog;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-// TODO: implement BlogService methods
+using AzTwWebsiteApi.Models.Blog;
+
 namespace AzTwWebsiteApi.Services.Blog
 {
-  public interface IBlogService
-  {
-    Task<IEnumerable<BlogPost>> GetBlogPostsAsync(int pageSize = 25, int pageNumber = 1);
+    public interface IBlogService
+    {
+        Task<(IEnumerable<BlogPost> Posts, string? ContinuationToken)> GetBlogPostsAsync(
+            int pageSize = 25,
+            string? continuationToken = null);
     // Task<BlogPost> GetBlogPostByIdAsync(string id);
     // Task<BlogPost> CreateBlogPostAsync(BlogPost post);
     // Task<BlogPost> UpdateBlogPostAsync(string id, BlogPost post);

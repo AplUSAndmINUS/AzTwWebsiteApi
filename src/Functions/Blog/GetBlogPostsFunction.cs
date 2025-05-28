@@ -33,12 +33,15 @@ namespace AzTwWebsiteApi.Functions.Blog
       {
         var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
         int pageSize = int.TryParse(query["pageSize"], out var size) ? size : 25;
-        string continuationToken = query["continuationToken"];
+        string? continuationToken = query["continuationToken"];
 
-        var posts = await _blogService.GetBlogPostsAsync(pageSize, continuationToken);
+        (IEnumerable<BlogPost> posts, string? nextPageToken) = await _blogService.GetBlogPostsAsync(pageSize, continuationToken);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(posts);
+        await response.WriteAsJsonAsync(new { 
+            posts,
+            nextPageToken
+        });
 
         _logger.LogInformation("Function Complete: {Module} - {Function}", Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
         return response;

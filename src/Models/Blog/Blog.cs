@@ -1,24 +1,28 @@
-namespace AzTwWebsiteApi.Models.Blog
+using Azure;
+using Azure.Data.Tables;
 
+namespace AzTwWebsiteApi.Models.Blog
 {
-    public class BlogPost
+    public class BlogPost : ITableEntity
     {
-        public string PartitionKey => AuthorId; // In BlogPost to optimize queries by author
-        public string RowKey => Id; // Unique identifier for the post
-        public required string Id { get; set; }
-        public required string Title { get; set; }
-        public required string Content { get; set; }
+        public string PartitionKey { get; set; } = string.Empty; // AuthorId
+        public string RowKey { get; set; } = string.Empty; // Post Id
+        public DateTimeOffset? Timestamp { get; set; }
+        public ETag ETag { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
         public DateTime PublishDate { get; set; }
         public DateTime LastModified { get; set; }
-        public required string[] Tags { get; set; }
-        public required string[] ImageUrls { get; set; }
-        public required bool IsPublished { get; set; }
-        public required string Summary { get; set; }
-        public string AuthorId { get; set; }
-        public required string FeaturedImageUrl { get; set; } // URL of the featured image for the post
-        public List<string> CommentIds { get; set; } = new(); // Efficient category-post linkage
-        public List<string> ImageIds { get; set; } = new(); // Stores only IDs for faster lookups
-        public List<string> CategoryIds { get; set; } = new(); // Store only category IDs
+        public string[] Tags { get; set; } = Array.Empty<string>();
+        public string[] ImageUrls { get; set; } = Array.Empty<string>();
+        public bool IsPublished { get; set; }
+        public string Summary { get; set; } = string.Empty;
+        public string AuthorId { get; set; } = string.Empty;
+        public string FeaturedImageUrl { get; set; } = string.Empty;
+        public List<string> CommentIds { get; set; } = new();
+        public List<string> ImageIds { get; set; } = new();
+        public List<string> CategoryIds { get; set; } = new();
     }
     public class BlogComment
     {

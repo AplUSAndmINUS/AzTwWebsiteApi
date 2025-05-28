@@ -1,54 +1,98 @@
+using Azure.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Services.Storage;
 using AzTwWebsiteApi.Models.Blog;
 using AzTwWebsiteApi.Utils;
-using Azure.Identity;
-// using AzTwWebsiteApi.Services.Email;
 
-// get the standard mock tables and blog storage account names
-string blogPostsTableName = GetEnvironmentVariable("MOCK_BLOG_POSTS_TABLE_NAME");
-// string blogCommentsTableName = GetEnvironmentVariable("MOCK_BLOG_COMMENTS_TABLE_NAME");
-// string blogImagesContainerName = GetEnvironmentVariable("MOCK_BLOG_IMAGES_CONTAINER_NAME");
+namespace AzTwWebsiteApi.Services;
 
-public static string GetEnvironmentVariable(string key)
+public static class ServiceCollectionExtensions
 {
-  string mockValue = Environment.GetEnvironmentVariable(key);
-  // If running in production, transform the mock value
-  if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "production" && mockValue != null)
-  {
-    return mockValue.Replace("MOCK", "").Replace("_", ""); // Adjust based on naming conventions
-  }
-  return mockValue ?? throw new ArgumentNullException($"Environment variable '{key}' is not set.");
+    public static IServiceCollection AddAzTwWebsiteServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register configuration settings
+        services.Configure<StorageSettings>(configuration.GetSection("Storage"));
+        
+        // Register Azure credential
+        var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+        {
+            ExcludeEnvironmentCredential = false,
+            ExcludeManagedIdentityCredential = false,
+            ExcludeSharedTokenCacheCredential = true,
+            ExcludeVisualStudioCredential = true,
+            ExcludeVisualStudioCodeCredential = true,
+            ExcludeAzureCliCredential = true,
+            ExcludeInteractiveBrowserCredential = true
+        });
+        services.AddSingleton<TokenCredential>(credential);
+
+        // Register storage services
+        services.AddSingleton<ITableStorageService>(provider =>
+        {
+            var settings = configuration.GetSection("Storage").Get<StorageSettings>()
+                ?? throw new InvalidOperationException("Storage settings are not configured");
+            return new TableStorageService(
+                credential,
+                settings.BlogPostsTableName);
+        });
+
+        // Register blob storage when needed
+        if (!string.IsNullOrEmpty(configuration["Storage:BlogImagesContainerName"]))
+        {
+            services.AddSingleton<IBlobStorageService>(provider =>
+            {
+                var settings = configuration.GetSection("Storage").Get<StorageSettings>()
+                    ?? throw new InvalidOperationException("Storage settings are not configured");
+                return new BlobStorageService(
+                    credential,
+                    settings.BlogImagesContainerName);
+            });
+        }
+
+        // Configure logging and telemetry
+        ConfigureLogging(services, configuration);
+
+        return services;
+    }
+
+    private static void ConfigureLogging(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole();
+            builder.AddDebug();
+            
+            var instrumentationKey = configuration["ApplicationInsights:InstrumentationKey"];
+            if (!string.IsNullOrEmpty(instrumentationKey))
+            {
+                builder.AddApplicationInsights(instrumentationKey);
+            }
+        });
+
+        services.AddApplicationInsightsTelemetry(options =>
+        {
+            options.EnableAdaptiveSampling = true;
+            options.EnableQuickPulseMetricStream = true;
+        });
+    }
 }
 
-public static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+public class StorageSettings
 {
-  // Register Blob and Table Storage with Managed Identity
-  var credential = new DefaultAzureCredential();
-  services.AddSingleton<TokenCredential>(credential);
+    public string BlogPostsTableName { get; set; } = string.Empty;
+    public string BlogCommentsTableName { get; set; } = string.Empty;
+    public string BlogImagesContainerName { get; set; } = string.Empty;
 
-  // services.AddSingleton<IBlobStorageService>(provider =>
-  // new BlobStorageService(credential, blogImagesContainerName));
-
-  services.AddSingleton<ITableStorageService>(provider =>
-  new TableStorageService(credential, blogPostsTableName)); 
-  // services.AddSingleton<ITableStorageService>(provider =>
-  // new TableStorageService(credential, blogCommentsTableName)); 
-
-  // TODO: Register Email Sending
-  // services.Configure<SendGridSettings>(configuration.GetSection("SendGridSettings"));
-  // services.AddSingleton<IEmailService, SendGridEmailService>();
-  // services.AddHttpClient<IEmailService, SendGridEmailService>()
-  // .SetHandlerLifetime(TimeSpan.FromMinutes(5))
-  // .AddPolicyHandler(GetRetryPolicy());
-
-  // Additional configurations (logging, telemetry, etc.)
-  services.AddLogging(loggingBuilder =>
-  {
-    loggingBuilder.AddConsole();
-    loggingBuilder.AddDebug();
-    loggingBuilder.AddApplicationInsights(configuration["ApplicationInsights:InstrumentationKey"]);
-  });
-  services.AddApplicationInsightsTelemetry();
+    public static string TransformMockName(string name)
+    {
+        if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production")
+        {
+            return name.Replace("MOCK_", "").Replace("_", "");
+        }
+        return name;
+    }
 }
