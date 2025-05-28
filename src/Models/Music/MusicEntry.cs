@@ -1,9 +1,18 @@
+using Azure;
+using Azure.Data.Tables;
+
 namespace AzTwWebsiteApi.Models.Music
 {
-  public class MusicEntry
+  public class MusicEntry : ITableEntity
   {
-    public string PartitionKey => Artist; // In MusicEntry to optimize queries by genre
-    public string RowKey => Id; // Unique identifier for the music entry
+    public string PartitionKey { get => Artist; set => Artist = value; } // Fixed partition key for music entries
+    public string RowKey
+    {
+      get => Id;
+      set => Id = value;
+    } // Unique identifier for the music entry
+    public DateTimeOffset? Timestamp { get; set; }
+    public ETag ETag { get; set; }
     public required string Id { get; set; }
     public required string Title { get; set; }
     public required string Artist { get; set; }
@@ -18,19 +27,20 @@ namespace AzTwWebsiteApi.Models.Music
   public class MusicImage
   {
     public string PartitionKey => MusicEntryId; // In MusicImage to optimize queries
-    public required string Id { get; set; };
+    public required string Id { get; set; }
     public required string FileName { get; set; }
     public required string ContentType { get; set; }
     public required string ImageUrl { get; set; }
     public required DateTime UploadDate { get; set; }
     public required string MusicEntryId { get; set; } // Reference to the music entry
     public required string AltText { get; set; }
-    public string Caption? { get; set; }
+    public string? Caption { get; set; }
     public required bool IsThumbnail { get; set; } // Indicates if this image is a thumbnail
   }
-    public class MusicComment
-    {
-      public string PartitionKey => PostId; // Use PostId for grouping comments
+
+  public class MusicComment
+  {
+    public string PartitionKey => PostId; // Use PostId for grouping comments
       public string RowKey => Id; // Unique identifier for the comment
       public required string Id { get; set; }
       public required string PostId { get; set; }  // Reference to the music entry

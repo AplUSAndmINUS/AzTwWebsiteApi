@@ -5,9 +5,6 @@ using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using Azure.Data.Tables;
-using Azure.Identity;
-using AzTwWebsiteApi.Services.Utils;
 using AzTwWebsiteApi.Models.Blog;
 
 namespace AzTwWebsiteApi.Functions.Blog
