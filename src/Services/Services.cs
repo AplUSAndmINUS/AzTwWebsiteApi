@@ -65,10 +65,13 @@ public static class ServiceCollectionExtensions
             builder.AddConsole();
             builder.AddDebug();
             
-            var instrumentationKey = configuration["ApplicationInsights:InstrumentationKey"];
-            if (!string.IsNullOrEmpty(instrumentationKey))
+            var connectionString = configuration["ApplicationInsights:ConnectionString"];
+            if (!string.IsNullOrEmpty(connectionString))
             {
-                builder.AddApplicationInsights(instrumentationKey);
+                builder.AddApplicationInsights(config =>
+                {
+                    config.ConnectionString = connectionString;
+                });
             }
         });
 

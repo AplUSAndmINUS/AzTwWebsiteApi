@@ -16,7 +16,7 @@ namespace AzTwWebsiteApi.Utils
             string module,
             string component, 
             string operation, 
-            string correlationId = null)
+            string? correlationId = null)
         {
             logger.BeginScope(new[] 
             {
@@ -29,19 +29,19 @@ namespace AzTwWebsiteApi.Utils
             return logger;
         }
 
-        public static void LogFunctionStart(this ILogger logger, string module, string functionName, string correlationId = null)
+        public static void LogFunctionStart(this ILogger logger, string module, string functionName, string? correlationId = null)
         {
             logger.WithContext(module, "Function", $"{functionName}.Start", correlationId)
                 .LogInformation("[{Module}] Function {FunctionName} execution started", module, functionName);
         }
 
-        public static void LogFunctionComplete(this ILogger logger, string module, string functionName, string correlationId = null)
+        public static void LogFunctionComplete(this ILogger logger, string module, string functionName, string? correlationId = null)
         {
             logger.WithContext(module, "Function", $"{functionName}.Complete", correlationId)
                 .LogInformation("[{Module}] Function {FunctionName} execution completed successfully", module, functionName);
         }
 
-        public static void LogFunctionError(this ILogger logger, string module, string functionName, Exception ex, string correlationId = null)
+        public static void LogFunctionError(this ILogger logger, string module, string functionName, Exception ex, string? correlationId = null)
         {
             logger.WithContext(module, "Function", $"{functionName}.Error", correlationId)
                 .LogError(ex, "[{Module}] Function {FunctionName} execution failed: {ErrorMessage}", module, functionName, ex.Message);

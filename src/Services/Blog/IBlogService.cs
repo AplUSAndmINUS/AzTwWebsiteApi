@@ -2,8 +2,6 @@ using AzTwWebsiteApi.Models.Blog;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-using AzTwWebsiteApi.Models.Blog;
-
 namespace AzTwWebsiteApi.Services.Blog
 {
     public interface IBlogService
