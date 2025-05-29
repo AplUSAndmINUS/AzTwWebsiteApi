@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using AzTwWebsiteApi.Services.Storage;
 using AzTwWebsiteApi.Models.Blog;
-using AzTwWebsiteApi.Utils;
 
 namespace AzTwWebsiteApi.Services;
 
@@ -13,88 +13,33 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Register configuration settings
-        services.Configure<StorageSettings>(configuration.GetSection("Storage"));
+        // Register configuration settings with proper binding
+        services.Configure<StorageSettings>(options => 
+        {
+            configuration.GetSection("Storage").Bind(options);
+            // Set default values if not provided in configuration
+            options.BlogPostsTableName = StorageSettings.TransformMockName(
+                options.BlogPostsTableName ?? "MOCK_BLOG_POSTS");
+            options.BlogCommentsTableName = StorageSettings.TransformMockName(
+                options.BlogCommentsTableName ?? "MOCK_BLOG_COMMENTS");
+            options.BlogImagesContainerName = StorageSettings.TransformMockName(
+                options.BlogImagesContainerName ?? "MOCK_BLOG_IMAGES");
+        });
         
-        // Register Azure credential
-        var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+        // Register TableStorageService for BlogPost
+        services.AddScoped<ITableStorageService<BlogPost>>(provider =>
         {
-            ExcludeEnvironmentCredential = false,
-            ExcludeManagedIdentityCredential = false,
-            ExcludeSharedTokenCacheCredential = true,
-            ExcludeVisualStudioCredential = true,
-            ExcludeVisualStudioCodeCredential = true,
-            ExcludeAzureCliCredential = true,
-            ExcludeInteractiveBrowserCredential = true
+            var logger = provider.GetRequiredService<ILogger<TableStorageService<BlogPost>>>();
+            var settings = provider.GetRequiredService<IOptions<StorageSettings>>().Value;
+            var connectionString = configuration.GetConnectionString("AzureWebJobsStorage") 
+                ?? throw new InvalidOperationException("Storage connection string not found");
+            
+            return new TableStorageService<BlogPost>(
+                connectionString,
+                settings.BlogPostsTableName,
+                logger);
         });
-        services.AddSingleton<TokenCredential>(credential);
-
-        // Register storage services
-        services.AddSingleton<ITableStorageService>(provider =>
-        {
-            var settings = configuration.GetSection("Storage").Get<StorageSettings>()
-                ?? throw new InvalidOperationException("Storage settings are not configured");
-            return new TableStorageService(
-                credential,
-                settings.BlogPostsTableName);
-        });
-
-        // Register blob storage when needed
-        if (!string.IsNullOrEmpty(configuration["Storage:BlogImagesContainerName"]))
-        {
-            services.AddSingleton<IBlobStorageService>(provider =>
-            {
-                var settings = configuration.GetSection("Storage").Get<StorageSettings>()
-                    ?? throw new InvalidOperationException("Storage settings are not configured");
-                return new BlobStorageService(
-                    credential,
-                    settings.BlogImagesContainerName);
-            });
-        }
-
-        // Configure logging and telemetry
-        ConfigureLogging(services, configuration);
 
         return services;
-    }
-
-    private static void ConfigureLogging(IServiceCollection services, IConfiguration configuration)
-    {
-        services.AddLogging(builder =>
-        {
-            builder.AddConsole();
-            builder.AddDebug();
-            
-            var connectionString = configuration["ApplicationInsights:ConnectionString"];
-            if (!string.IsNullOrEmpty(connectionString))
-            {
-                builder.AddApplicationInsights(config =>
-                {
-                    config.ConnectionString = connectionString;
-                });
-            }
-        });
-
-        services.AddApplicationInsightsTelemetry(options =>
-        {
-            options.EnableAdaptiveSampling = true;
-            options.EnableQuickPulseMetricStream = true;
-        });
-    }
-}
-
-public class StorageSettings
-{
-    public string BlogPostsTableName { get; set; } = string.Empty;
-    public string BlogCommentsTableName { get; set; } = string.Empty;
-    public string BlogImagesContainerName { get; set; } = string.Empty;
-
-    public static string TransformMockName(string name)
-    {
-        if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production")
-        {
-            return name.Replace("MOCK_", "").Replace("_", "");
-        }
-        return name;
     }
 }
