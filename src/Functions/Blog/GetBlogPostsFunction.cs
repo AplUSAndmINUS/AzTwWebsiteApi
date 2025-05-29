@@ -6,6 +6,9 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Models.Blog;
+using AzTwWebsiteApi.Services;
+using AzTwWebsiteApi.Services.Blog;
+using AzTwWebsiteApi.Services.Utils;
 
 namespace AzTwWebsiteApi.Functions.Blog
 {
