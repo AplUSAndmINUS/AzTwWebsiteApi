@@ -17,8 +17,13 @@ var host = new HostBuilder()
     })
     .ConfigureServices((context, services) =>
     {
-        // Add Azure Functions specific services
-        services.ConfigureFunctionsApplicationInsights();
+        // Configure logging without Application Insights for local development
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole();
+            builder.SetMinimumLevel(LogLevel.Information);
+        });
+
         services.AddHttpClient();
 
         // Add our custom services
