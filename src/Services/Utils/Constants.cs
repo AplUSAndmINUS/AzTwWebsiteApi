@@ -1,4 +1,4 @@
-namespace AzTwWebsiteApi.Utils
+namespace AzTwWebsiteApi.Services.Utils
 {
     public static class Constants
     {
