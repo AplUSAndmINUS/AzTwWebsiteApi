@@ -7,10 +7,10 @@ namespace AzTwWebsiteApi.Utils
             public const string Blog = "Blog";
             public const string Portfolio = "Portfolio";
             public const string Events = "Events";
+            public const string Contact = "Contact";
             public const string GitHub = "GitHub";
             public const string Video = "Video";
             public const string Live = "Live";
-            public const string Contact = "Contact";
         }
 
         public static class BlobContainers
@@ -18,10 +18,10 @@ namespace AzTwWebsiteApi.Utils
             public const string ArtworkImages = "artwork-images";
             public const string BlogImages = "blog-images";
             public const string PortfolioImages = "portfolio-images";
-            public const string Videos = "videos";
+            public const string EventsData = "events-data";
             public const string GitHub = "github-data";
             public const string LiveStreams = "livestreams";
-            public const string EventsData = "events-data";
+            public const string Videos = "videos";
         }
         public static class TableNames
         {
@@ -41,8 +41,10 @@ namespace AzTwWebsiteApi.Utils
         public static class Functions
         {
             public const string GetBlogPosts = "GetBlogPosts";
+            public const string GetBlogPost = "GetBlogPostById";
             public const string SetBlogPosts = "SetBlogPosts";
-            public const string GetBlogImage = "GetBlogImage";
+            public const string GetBlogImages = "GetBlogImages";
+            public const string GetBlogImage = "GetBlogImageById";
             public const string SetBlogImage = "SetBlogImage";
         }
     }
