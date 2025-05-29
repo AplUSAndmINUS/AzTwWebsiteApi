@@ -25,34 +25,42 @@ namespace AzTwWebsiteApi.Functions.Blog
 
     [Function("GetBlogPosts")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "_api/blog/posts")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequestData req)
     {
-      _logger.LogInformation("Function Start: {Module} - {Function}", Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
+        _logger.LogInformation("Function Start: {Module} - {Function}", Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
 
-      try
-      {
-        var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-        int pageSize = int.TryParse(query["pageSize"], out var size) ? size : 25;
-        string? continuationToken = query["continuationToken"];
+        try
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            int pageSize = int.TryParse(query["pageSize"], out var size) ? size : 25;
+            string? continuationToken = query["continuationToken"];
 
-        (IEnumerable<BlogPost> posts, string? nextPageToken) = await _blogService.GetBlogPostsAsync(pageSize, continuationToken);
+            _logger.LogInformation("Requesting blog posts. PageSize: {PageSize}, ContinuationToken: {Token}", 
+                pageSize, continuationToken ?? "null");
 
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { 
-            posts,
-            nextPageToken
-        });
+            (IEnumerable<BlogPost> posts, string? nextPageToken) = await _blogService.GetBlogPostsAsync(pageSize, continuationToken);
 
-        _logger.LogInformation("Function Complete: {Module} - {Function}", Constants.Modules.Blog, Constants.Functions.GetBlogPosts);
-        return response;
-      }
-      catch (Exception ex)
-      {
-        _logger.LogError(ex, "Error occurred while fetching blog posts");
-        var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-        await errorResponse.WriteStringAsync("An error occurred while retrieving blog posts.");
-        return errorResponse;
-      }
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new { 
+                posts,
+                nextPageToken
+            });
+
+            _logger.LogInformation("Function Complete: {Module} - {Function}. Returned {Count} posts", 
+                Constants.Modules.Blog, Constants.Functions.GetBlogPosts, posts?.Count() ?? 0);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while fetching blog posts. Error: {Error}", ex.Message);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new
+            {
+                error = "An error occurred while retrieving blog posts",
+                message = ex.Message
+            });
+            return errorResponse;
+        }
     }
   }
 }
