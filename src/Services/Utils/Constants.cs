@@ -15,12 +15,27 @@ namespace AzTwWebsiteApi.Utils
 
         public static class BlobContainers
         {
-            public const string BlogPosts = "blog-posts";
+            public const string ArtworkImages = "artwork-images";
             public const string BlogImages = "blog-images";
-            public const string PortfolioPosts = "portfolio-posts";
             public const string PortfolioImages = "portfolio-images";
-            public const string Events = "events";
+            public const string Videos = "videos";
             public const string GitHub = "github-data";
+            public const string LiveStreams = "livestreams";
+            public const string EventsData = "events-data";
+        }
+        public static class TableNames
+        {
+            public const string Artwork = "artwork";
+            public const string BlogPosts = "blog";
+            public const string BlogComments = "blogcomments";
+            public const string Books = "books";
+            public const string Contact = "contact";
+            public const string Events = "events";
+            public const string GitHubRepositories = "github";
+            public const string PortfolioItems = "portfolio";
+            public const string PortfolioComments = "portfoliocomments";
+            public const string LiveStreams = "livestreams";
+            public const string Music = "music";
         }
 
         public static class Functions
