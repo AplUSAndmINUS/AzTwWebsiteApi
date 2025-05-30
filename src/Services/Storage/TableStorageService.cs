@@ -14,11 +14,22 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         string tableName,
         ILogger<TableStorageService<T>> logger)
     {
-        _tableClient = new TableClient(connectionString, tableName);
         _logger = logger;
         
-        // Ensure table exists
-        _tableClient.CreateIfNotExists();
+        try
+        {
+            _logger.LogInformation("Initializing TableClient for table: {TableName}", tableName);
+            _tableClient = new TableClient(connectionString, tableName);
+            _logger.LogInformation("Creating table if not exists: {TableName}", tableName);
+            _tableClient.CreateIfNotExists();
+            _logger.LogInformation("Table initialization complete: {TableName}", tableName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing TableClient for table: {TableName}. Error: {Error}", 
+                tableName, ex.Message);
+            throw;
+        }
     }
 
     public async Task<T?> GetEntityAsync(string partitionKey, string rowKey)
@@ -46,6 +57,7 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
     {
         try
         {
+            _logger.LogInformation("Fetching entities with filter: {Filter}", filter ?? "none");
             var results = new List<T>();
             AsyncPageable<T> queryResults = _tableClient.QueryAsync<T>(filter);
 
@@ -54,11 +66,13 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
                 results.Add(entity);
             }
 
+            _logger.LogInformation("Retrieved {Count} entities", results.Count);
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving entities with filter: {Filter}", filter);
+            _logger.LogError(ex, "Error retrieving entities. Filter: {Filter}, Error: {Error}", 
+                filter, ex.Message);
             throw;
         }
     }
@@ -68,11 +82,12 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         try
         {
             await _tableClient.AddEntityAsync(entity);
+            _logger.LogInformation("Entity added: {Entity}", entity);
             return entity;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error adding entity: {Entity}", entity);
+            _logger.LogError(ex, "Error adding entity: {Entity}. Error: {Error}", entity, ex.Message);
             throw;
         }
     }
@@ -82,10 +97,11 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         try
         {
             await _tableClient.UpdateEntityAsync(entity, ETag.All, TableUpdateMode.Replace);
+            _logger.LogInformation("Entity updated: {Entity}", entity);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating entity: {Entity}", entity);
+            _logger.LogError(ex, "Error updating entity: {Entity}. Error: {Error}", entity, ex.Message);
             throw;
         }
     }
@@ -95,6 +111,8 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         try
         {
             await _tableClient.DeleteEntityAsync(partitionKey, rowKey);
+            _logger.LogInformation("Entity deleted: PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                partitionKey, rowKey);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -103,8 +121,8 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting entity: PartitionKey={PartitionKey}, RowKey={RowKey}", 
-                partitionKey, rowKey);
+            _logger.LogError(ex, "Error deleting entity: PartitionKey={PartitionKey}, RowKey={RowKey}. Error: {Error}", 
+                partitionKey, rowKey, ex.Message);
             throw;
         }
     }
@@ -126,16 +144,19 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
                 results.AddRange(page.Values);
                 if (results.Count >= maxPerPage)
                 {
+                    _logger.LogInformation("Paged results retrieved. Count: {Count}, ContinuationToken: {ContinuationToken}", 
+                        results.Count, page.ContinuationToken);
                     return (results, page.ContinuationToken);
                 }
             }
 
+            _logger.LogInformation("All results retrieved. Total count: {Count}", results.Count);
             return (results, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving paged results. MaxPerPage={MaxPerPage}, ContinuationToken={ContinuationToken}, Filter={Filter}", 
-                maxPerPage, continuationToken, filter);
+            _logger.LogError(ex, "Error retrieving paged results. MaxPerPage={MaxPerPage}, ContinuationToken={ContinuationToken}, Filter={Filter}, Error: {Error}", 
+                maxPerPage, continuationToken, filter, ex.Message);
             throw;
         }
     }
