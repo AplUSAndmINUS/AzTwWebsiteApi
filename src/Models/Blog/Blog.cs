@@ -5,8 +5,9 @@ namespace AzTwWebsiteApi.Models.Blog
 {
     public class BlogPost : ITableEntity
     {
+        public string Id { get; set; } = Guid.NewGuid().ToString(); // Unique identifier for the blog post
         public string PartitionKey { get; set; } = "BlogPosts";
-        public string RowKey { get; set; } = Guid.NewGuid().ToString();
+        public required string RowKey { get; set; }
         public DateTimeOffset? Timestamp { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;

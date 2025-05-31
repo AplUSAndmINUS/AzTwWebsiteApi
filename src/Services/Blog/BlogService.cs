@@ -55,7 +55,7 @@ namespace AzTwWebsiteApi.Services.Blog
 
                 if (imageBlob != null)
                 {
-                    blogPost.ImageUrl = imageBlob.ToString();
+                    blogPost.ImageUrl = imageBlob.ToString() ?? string.Empty;
                 }
                 else
                 {

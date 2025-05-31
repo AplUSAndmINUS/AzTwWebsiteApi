@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Services.Storage;
 using System.Text.Json;
 using Azure.Storage.Blobs;
+using AzTwWebsiteApi.Services.Utils;
 
 namespace AzTwWebsiteApi.Functions;
 
@@ -18,9 +19,6 @@ public static class HandleCrudFunctions
         int? pageSize = null,
         string? continuationToken = null) where T : class, new()
     {
-        if (!IsValidOperation(operation))
-            throw new ArgumentException($"Invalid operation: {operation}. Valid operations are: {string.Join(", ", GetValidOperations())}");
-
         var (serviceName, storageType) = GetStorageServiceInfo(entityType);
         var storageConnectionString = Environment.GetEnvironmentVariable("StorageConnectionString")
             ?? throw new InvalidOperationException("Storage connection string not configured");
@@ -30,14 +28,41 @@ public static class HandleCrudFunctions
             throw new ArgumentException($"Type {typeof(T).Name} must implement ITableEntity for table storage operations");
         }
 
-        return storageType switch
+        if (storageType == Constants.Storage.StorageType.Table && typeof(ITableEntity).IsAssignableFrom(typeof(T)))
         {
-            Constants.Storage.StorageType.Table when typeof(ITableEntity).IsAssignableFrom(typeof(T)) =>
-                await HandleTableStorageOperation<T>(operation, serviceName, storageConnectionString, data as ITableEntity, filter, pageSize, continuationToken),
-            Constants.Storage.StorageType.Blob =>
-                await HandleBlobStorageOperation<T>(operation, serviceName, storageConnectionString, data, filter),
-            _ => throw new ArgumentException($"Unsupported storage type {storageType} for entity type {typeof(T).Name}")
-        };
+            // Use reflection to call the generic method with the correct constraint
+            return await HandleTableStorageOperationWrapper<T>(operation, serviceName, storageConnectionString, data, filter, pageSize, continuationToken);
+        }
+        else if (storageType == Constants.Storage.StorageType.Blob)
+        {
+            return await HandleBlobStorageOperation<T>(operation, serviceName, storageConnectionString, data, filter);
+        }
+        else
+        {
+            throw new ArgumentException($"Unsupported storage type {storageType} for entity type {typeof(T).Name}");
+        }
+    }
+
+    private static async Task<IEnumerable<T>> HandleTableStorageOperationWrapper<T>(
+        string operation,
+        string tableName,
+        string connectionString,
+        T? data,
+        string? filter = null,
+        int? pageSize = null,
+        string? continuationToken = null) where T : class, new()
+    {
+        // Cast data to ITableEntity if possible
+        var entity = data as ITableEntity;
+        // Use reflection to invoke the generic method with the correct constraint
+        var method = typeof(HandleCrudFunctions)
+            .GetMethod(nameof(HandleTableStorageOperation), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+            ?.MakeGenericMethod(typeof(T));
+        if (method == null)
+            throw new InvalidOperationException("Could not find HandleTableStorageOperation method.");
+
+        var task = (Task<IEnumerable<T>>)method.Invoke(null, new object?[] { operation, tableName, connectionString, entity, filter, pageSize, continuationToken })!;
+        return await task;
     }
 
     private static (string ServiceName, Constants.Storage.StorageType StorageType) GetStorageServiceInfo(string entityType)
@@ -48,31 +73,6 @@ public static class HandleCrudFunctions
         var serviceName = GetStorageService.GetStorageServiceName(entityType);
         var storageType = Constants.Storage.EntityStorageTypes[entityType];
         return (serviceName, storageType);
-    }
-
-    private static bool IsValidOperation(string operation)
-    {
-        return operation.ToLowerInvariant() switch
-        {
-            Constants.Storage.Operations.Get => true,
-            Constants.Storage.Operations.Set => true,
-            Constants.Storage.Operations.Update => true,
-            Constants.Storage.Operations.Delete => true,
-            Constants.Storage.Operations.List => true,
-            _ => false
-        };
-    }
-
-    private static IEnumerable<string> GetValidOperations()
-    {
-        return new[]
-        {
-            Constants.Storage.Operations.Get,
-            Constants.Storage.Operations.Set,
-            Constants.Storage.Operations.Update,
-            Constants.Storage.Operations.Delete,
-            Constants.Storage.Operations.List
-        };
     }
 
     private static async Task<IEnumerable<T>> HandleTableStorageOperation<T>(
