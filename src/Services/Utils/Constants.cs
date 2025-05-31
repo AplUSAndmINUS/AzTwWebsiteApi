@@ -47,5 +47,73 @@ namespace AzTwWebsiteApi.Services.Utils
             public const string GetBlogImage = "GetBlogImageById";
             public const string SetBlogImage = "SetBlogImage";
         }
+
+        public static class Storage
+        {
+            public enum StorageType
+            {
+                Table,
+                Blob,
+                Queue,
+                File
+            }
+
+            public static class EntityTypes
+            {
+                // Table Storage entities
+                public const string Blog = "blog";
+                public const string Books = "books";
+                public const string Contact = "contact";
+                public const string Events = "events";
+                public const string GitHub = "github";
+                public const string LiveStreams = "livestreams";
+                public const string Music = "music";
+                public const string Portfolio = "portfolio";
+                public const string BlogComments = "blogcomments";
+                public const string PortfolioComments = "portfoliocomments";
+
+                // Blob Storage entities
+                public const string BlogImages = "blogimages";
+                public const string BooksImages = "booksimages";
+                public const string EventsData = "eventsdata";
+                public const string LiveStreamsImages = "livestreams-images";
+                public const string PortfolioImages = "portfolioimages";
+                public const string Video = "video";
+                public const string ArtworkImages = "artworkimages";
+            }
+
+            public static class Operations
+            {
+                public const string Get = "get";
+                public const string Set = "set";
+                public const string Update = "update";
+                public const string Delete = "delete";
+                public const string List = "list";
+            }
+
+            public static readonly Dictionary<string, StorageType> EntityStorageTypes = new()
+            {
+                // Table Storage mappings
+                { EntityTypes.Blog, StorageType.Table },
+                { EntityTypes.Books, StorageType.Table },
+                { EntityTypes.Contact, StorageType.Table },
+                { EntityTypes.Events, StorageType.Table },
+                { EntityTypes.GitHub, StorageType.Table },
+                { EntityTypes.LiveStreams, StorageType.Table },
+                { EntityTypes.Music, StorageType.Table },
+                { EntityTypes.Portfolio, StorageType.Table },
+                { EntityTypes.BlogComments, StorageType.Table },
+                { EntityTypes.PortfolioComments, StorageType.Table },
+
+                // Blob Storage mappings
+                { EntityTypes.BlogImages, StorageType.Blob },
+                { EntityTypes.BooksImages, StorageType.Blob },
+                { EntityTypes.EventsData, StorageType.Blob },
+                { EntityTypes.LiveStreamsImages, StorageType.Blob },
+                { EntityTypes.PortfolioImages, StorageType.Blob },
+                { EntityTypes.Video, StorageType.Blob },
+                { EntityTypes.ArtworkImages, StorageType.Blob }
+            };
+        }
     }
 }

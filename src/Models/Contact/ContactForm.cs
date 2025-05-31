@@ -1,6 +1,6 @@
 using System;
 
-namespace BlogReaderFunction.Models.Contact
+namespace AzTwWebsiteApi.Models.Contact
 {
     public class ContactForm
     {

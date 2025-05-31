@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using Azure.Data.Blobs;
 
 namespace AzTwWebsiteApi.Models.Blog
 {
@@ -24,7 +25,7 @@ namespace AzTwWebsiteApi.Models.Blog
         public List<string> ImageIds { get; set; } = new();
         public List<string> CategoryIds { get; set; } = new();
     }
-    public class BlogComment
+    public class BlogComment : ITableEntity
     {
         public string PartitionKey => PostId; // Use Comment ID for grouping
         public string RowKey => Id; // Unique identifier for the comment
@@ -37,7 +38,16 @@ namespace AzTwWebsiteApi.Models.Blog
         public required bool IsSpam { get; set; } = false;
         public DateTime LastModified { get; set; }
     }
-    public class BlogImage
+    public class BlogImage : IBlobEntity
+    {
+        public string PartitionKey => "BlogImage"; // In BlogComment to optimize queries
+        public string RowKey => Id; // Unique identifier for the image
+        public required string BlobName { get; set; } // Name of the blob in storage
+        public required string Url { get; set; } // URL to access the image
+        public required DateTimeOffset CreatedAt { get; set; }
+        public required DateTimeOffset LastModified { get; set; }
+    }
+    public class BlogImageMetadata : ITableEntity
     {
         public required string Id { get; set; }
         public required string ImageUrl { get; set; }

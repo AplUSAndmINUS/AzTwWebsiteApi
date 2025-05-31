@@ -1,4 +1,4 @@
-# BlogReaderFunction README.md
+# AzTwWebsiteApi README.md
 
 # Blog Reader Function
 
@@ -21,7 +21,7 @@ This project is an Azure Function application designed to read mock blog posts a
 - **src/Utils**: Contains utility classes for configuration.
   - `ManagedIdentityConfig.cs`: Configuration for using managed identity.
 
-- **test/BlogReaderFunction.Tests**: Contains unit tests for the functions.
+- **test/AzTwWebsiteApi.Tests**: Contains unit tests for the functions.
   - `GetBlogPostsFunctionTests.cs`: Tests for the GetBlogPostsFunction.
   - `GetBlogImageFunctionTests.cs`: Tests for the GetBlogImageFunction.
 
