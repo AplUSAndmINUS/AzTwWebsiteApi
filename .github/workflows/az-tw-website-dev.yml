@@ -33,7 +33,7 @@ jobs:
         mkdir -p ${{ env.OUTPUT_PATH }}
 
         # Build and publish the project
-        dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/Blog/BlogFunctions.csproj \
+        dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
           --output ${{ env.OUTPUT_PATH }} \
           --runtime linux-x64 \
