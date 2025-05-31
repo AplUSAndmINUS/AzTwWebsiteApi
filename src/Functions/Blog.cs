@@ -19,7 +19,6 @@ namespace AzTwWebsiteApi.Functions;
 public class BlogFunctions
 {
     private readonly ILogger<BlogFunctions> _logger;
-    private const string StorageServiceName = Constants.Storage.EntityTypes.Blog;
 
     public BlogFunctions(ILogger<BlogFunctions> logger)
     {
@@ -41,26 +40,24 @@ public class BlogFunctions
             string? continuationToken = query["continuationToken"];
 
             // Call HandleCrudOperation
-            var posts = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
-                operation: "get",        // What you want to do
-                entityType: "blog",      // Tells it to use Table Storage
-                pageSize: pageSize,      // Optional: for paging
-                continuationToken: continuationToken  // Optional: for paging
-            );
+            var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
+                operation: Constants.Storage.Operations.Get,
+                entityType: Constants.Storage.EntityTypes.Blog,
+                pageSize: pageSize,
+                continuationToken: continuationToken);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(posts);
+            await response.WriteAsJsonAsync(result);
             return response;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting blog posts");
-            var response = req.CreateResponse(HttpStatusCode.InternalServerError);
-            await response.WriteAsJsonAsync(new { error = ex.Message });
-            return response;
+            _logger.LogError(ex, "Error getting blog posts: {Error}", ex.Message);
+            return await CreateErrorResponse(req, ex);
         }
     }
 
+    // Get a single blog post by ID
     [Function("GetBlogPostById")]
     public async Task<HttpResponseData> GetBlogPostById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts/{id}")] HttpRequestData req,
@@ -71,8 +68,8 @@ public class BlogFunctions
         try
         {
             var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
-                "get",
-                StorageServiceName,
+                operation: Constants.Storage.Operations.Get,
+                entityType: Constants.Storage.EntityTypes.Blog,
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             if (!result.Any())
@@ -86,41 +83,44 @@ public class BlogFunctions
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in GetBlogPostById: {Error}", ex.Message);
+            _logger.LogError(ex, "Error getting blog post {Id}: {Error}", id, ex.Message);
             return await CreateErrorResponse(req, ex);
         }
     }
 
-    [Function("SetBlogPost")]
-    public async Task<HttpResponseData> SetBlogPost(
+    // Create a new blog post
+    [Function("CreateBlogPost")]
+    public async Task<HttpResponseData> CreateBlogPost(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts")] HttpRequestData req)
     {
-        _logger.LogInformation("Function Start: {Module} - SetBlogPost", Constants.Modules.Blog);
+        _logger.LogInformation("Function Start: {Module} - CreateBlogPost", Constants.Modules.Blog);
 
         try
         {
             var blogPost = await JsonSerializer.DeserializeAsync<BlogPost>(req.Body);
             if (blogPost == null) throw new ArgumentNullException(nameof(blogPost));
 
+            // Ensure required Table Storage properties are set
             blogPost.PartitionKey = blogPost.Id;
             blogPost.RowKey = blogPost.Id;
 
-            var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
-                "set",
-                StorageServiceName,
+            var result = await HandleCrudFunctions.HandleCrudOperation(
+                operation: Constants.Storage.Operations.Set,
+                entityType: Constants.Storage.EntityTypes.Blog,
                 data: blogPost);
 
             var response = req.CreateResponse(HttpStatusCode.Created);
-            await response.WriteAsJsonAsync(result);
+            await response.WriteAsJsonAsync(result.First());
             return response;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in SetBlogPost: {Error}", ex.Message);
+            _logger.LogError(ex, "Error creating blog post: {Error}", ex.Message);
             return await CreateErrorResponse(req, ex);
         }
     }
 
+    // Update an existing blog post
     [Function("UpdateBlogPost")]
     public async Task<HttpResponseData> UpdateBlogPost(
         [HttpTrigger(AuthorizationLevel.Function, "put", Route = "blog/posts/{id}")] HttpRequestData req,
@@ -137,22 +137,23 @@ public class BlogFunctions
             blogPost.RowKey = id;
             blogPost.Id = id;
 
-            var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
-                "update",
-                StorageServiceName,
+            var result = await HandleCrudFunctions.HandleCrudOperation(
+                operation: Constants.Storage.Operations.Update,
+                entityType: Constants.Storage.EntityTypes.Blog,
                 data: blogPost);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(result);
+            await response.WriteAsJsonAsync(result.First());
             return response;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in UpdateBlogPost: {Error}", ex.Message);
+            _logger.LogError(ex, "Error updating blog post {Id}: {Error}", id, ex.Message);
             return await CreateErrorResponse(req, ex);
         }
     }
 
+    // Delete a blog post
     [Function("DeleteBlogPost")]
     public async Task<HttpResponseData> DeleteBlogPost(
         [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "blog/posts/{id}")] HttpRequestData req,
@@ -163,15 +164,15 @@ public class BlogFunctions
         try
         {
             await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
-                "delete",
-                StorageServiceName,
+                operation: Constants.Storage.Operations.Delete,
+                entityType: Constants.Storage.EntityTypes.Blog,
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             return req.CreateResponse(HttpStatusCode.NoContent);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in DeleteBlogPost: {Error}", ex.Message);
+            _logger.LogError(ex, "Error deleting blog post {Id}: {Error}", id, ex.Message);
             return await CreateErrorResponse(req, ex);
         }
     }

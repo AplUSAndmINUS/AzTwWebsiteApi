@@ -18,15 +18,18 @@ public static class HandleCrudFunctions
         int? pageSize = null,
         string? continuationToken = null) where T : class, new()
     {
+        if (!IsValidOperation(operation))
+            throw new ArgumentException($"Invalid operation: {operation}. Valid operations are: {string.Join(", ", GetValidOperations())}");
+
         var (serviceName, storageType) = GetStorageServiceInfo(entityType);
         var storageConnectionString = Environment.GetEnvironmentVariable("StorageConnectionString")
             ?? throw new InvalidOperationException("Storage connection string not configured");
 
         return storageType switch
         {
-            StorageType.Table when typeof(ITableEntity).IsAssignableFrom(typeof(T)) =>
+            Constants.Storage.StorageType.Table when typeof(ITableEntity).IsAssignableFrom(typeof(T)) =>
                 await HandleTableStorageOperation<T>(operation, serviceName, storageConnectionString, data as ITableEntity, filter, pageSize, continuationToken),
-            StorageType.Blob =>
+            Constants.Storage.StorageType.Blob =>
                 await HandleBlobStorageOperation<T>(operation, serviceName, storageConnectionString, data, filter),
             _ => throw new ArgumentException($"Unsupported storage type {storageType} for entity type {typeof(T).Name}")
         };
@@ -34,12 +37,37 @@ public static class HandleCrudFunctions
 
     private static (string ServiceName, Constants.Storage.StorageType StorageType) GetStorageServiceInfo(string entityType)
     {
+        if (!Constants.Storage.EntityStorageTypes.ContainsKey(entityType))
+            throw new ArgumentException($"Unknown entity type: {entityType}. Valid entity types are: {string.Join(", ", Constants.Storage.EntityStorageTypes.Keys)}");
+
         var serviceName = GetStorageService.GetStorageServiceName(entityType);
-        var storageType = Constants.Storage.EntityStorageTypes.TryGetValue(entityType, out var type)
-            ? type
-            : throw new ArgumentException($"Unknown entity type: {entityType}");
+        var storageType = Constants.Storage.EntityStorageTypes[entityType];
         return (serviceName, storageType);
     }
+
+    private static bool IsValidOperation(string operation)
+    {
+        return operation.ToLowerInvariant() switch
+        {
+            Constants.Storage.Operations.Get => true,
+            Constants.Storage.Operations.Set => true,
+            Constants.Storage.Operations.Update => true,
+            Constants.Storage.Operations.Delete => true,
+            Constants.Storage.Operations.List => true,
+            _ => false
+        };
+    }
+
+    private static IEnumerable<string> GetValidOperations()
+    {
+        return new[]
+        {
+            Constants.Storage.Operations.Get,
+            Constants.Storage.Operations.Set,
+            Constants.Storage.Operations.Update,
+            Constants.Storage.Operations.Delete,
+            Constants.Storage.Operations.List
+        };
 
     private static async Task<IEnumerable<T>> HandleTableStorageOperation<T>(
         string operation,
@@ -55,24 +83,24 @@ public static class HandleCrudFunctions
 
         switch (operation.ToLowerInvariant())
         {
-            case "get" when pageSize.HasValue:
+            case Constants.Storage.Operations.Get when pageSize.HasValue:
                 var (items, token) = await tableService.GetPagedResultsAsync(pageSize.Value, continuationToken, filter);
                 return items;
 
-            case "get":
+            case Constants.Storage.Operations.Get:
                 return await tableService.GetAllAsync(filter);
 
-            case "set":
+            case Constants.Storage.Operations.Set:
                 if (data == null) throw new ArgumentNullException(nameof(data));
                 await tableService.AddEntityAsync((T)data);
                 return new[] { (T)data };
 
-            case "update":
+            case Constants.Storage.Operations.Update:
                 if (data == null) throw new ArgumentNullException(nameof(data));
                 await tableService.UpdateEntityAsync((T)data);
                 return new[] { (T)data };
 
-            case "delete":
+            case Constants.Storage.Operations.Delete:
                 if (string.IsNullOrEmpty(filter))
                     throw new ArgumentException("Filter required for delete operation", nameof(filter));
                 
@@ -101,7 +129,7 @@ public static class HandleCrudFunctions
 
         switch (operation.ToLowerInvariant())
         {
-            case "get" when !string.IsNullOrEmpty(blobName):
+            case Constants.Storage.Operations.Get when !string.IsNullOrEmpty(blobName):
                 var blobClient = containerClient.GetBlobClient(blobName);
                 if (!await blobClient.ExistsAsync())
                     return Array.Empty<T>();
@@ -110,7 +138,7 @@ public static class HandleCrudFunctions
                 var content = download.Value.Content.ToString();
                 return new[] { JsonSerializer.Deserialize<T>(content)! };
 
-            case "get":
+            case Constants.Storage.Operations.Get:
                 var blobs = new List<T>();
                 await foreach (var blob in containerClient.GetBlobsAsync())
                 {
@@ -120,7 +148,7 @@ public static class HandleCrudFunctions
                 }
                 return blobs;
 
-            case "set":
+            case Constants.Storage.Operations.Set:
                 if (data == null) throw new ArgumentNullException(nameof(data));
                 if (string.IsNullOrEmpty(blobName)) throw new ArgumentException("Blob name required for set operation", nameof(blobName));
 
@@ -129,7 +157,7 @@ public static class HandleCrudFunctions
                 await setBlobClient.UploadAsync(BinaryData.FromString(json), overwrite: true);
                 return new[] { data };
 
-            case "update":
+            case Constants.Storage.Operations.Update:
                 if (data == null) throw new ArgumentNullException(nameof(data));
                 if (string.IsNullOrEmpty(blobName)) throw new ArgumentException("Blob name required for update operation", nameof(blobName));
 
@@ -141,7 +169,7 @@ public static class HandleCrudFunctions
                 await updateBlobClient.UploadAsync(BinaryData.FromString(updateJson), overwrite: true);
                 return new[] { data };
 
-            case "delete":
+            case Constants.Storage.Operations.Delete:
                 if (string.IsNullOrEmpty(blobName))
                     throw new ArgumentException("Blob name required for delete operation", nameof(blobName));
 
@@ -152,11 +180,5 @@ public static class HandleCrudFunctions
             default:
                 throw new ArgumentException($"Invalid operation: {operation}", nameof(operation));
         }
-    }
-
-    private enum StorageType
-    {
-        Table,
-        Blob
     }
 }
