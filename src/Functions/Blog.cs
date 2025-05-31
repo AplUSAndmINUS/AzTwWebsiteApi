@@ -2,7 +2,7 @@
 // Endpoints: 
 // GetAllBlogPosts: api/blog/posts
 // GetBlogPostById: api/blog/posts/{id}
-// SetBlogPost: api/blog/posts
+// CreateBlogPost: api/blog/posts
 // UpdateBlogPost: api/blog/posts/{id}
 // DeleteBlogPost: api/blog/posts/{id}
 

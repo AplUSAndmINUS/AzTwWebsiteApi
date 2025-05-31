@@ -1,18 +1,18 @@
-// TODO: Create the Blob Storage Service interface
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Azure.Storage.Blobs.Models;
 
-// using System.Collections.Generic;
-// using System.IO;
-// using System.Threading.Tasks;
-// using AzTwWebsiteApi.Models.BlogImage;
-
-// namespace AzTwWebsiteApi.Services.Storage
-// {
-//     public interface IBlobBlogImageStorageService
-//     {
-//         Task<BlogPost> GetBlogPostAsync(string id);
-//         Task<IEnumerable<BlogPost>> GetBlogPostsAsync();
-//         Task<BlogImage> GetBlogImageAsync(string id);
-//         Task SetBlogPostAsync(BlogPost post);
-//         Task SetBlogImageAsync(string id, Stream imageStream, string contentType, Dictionary<string, string> metadata);
-//     }
-// }
+namespace AzTwWebsiteApi.Services.Storage
+{
+    public interface IBlobStorageService<T> where T : class
+    {
+        Task<T?> GetBlobAsync(string blobName);
+        Task<IEnumerable<T>> GetAllBlobsAsync();
+        Task<T> UploadBlobAsync(string blobName, T data, IDictionary<string, string>? metadata = null);
+        Task<T> UpdateBlobAsync(string blobName, T data, IDictionary<string, string>? metadata = null);
+        Task DeleteBlobAsync(string blobName);
+        Task<(IEnumerable<T> Items, string? ContinuationToken)> GetPagedBlobsAsync(
+            int maxResults,
+            string? continuationToken = null);
+    }
+}

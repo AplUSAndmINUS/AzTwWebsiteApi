@@ -25,6 +25,11 @@ public static class HandleCrudFunctions
         var storageConnectionString = Environment.GetEnvironmentVariable("StorageConnectionString")
             ?? throw new InvalidOperationException("Storage connection string not configured");
 
+        if (storageType == Constants.Storage.StorageType.Table && !typeof(ITableEntity).IsAssignableFrom(typeof(T)))
+        {
+            throw new ArgumentException($"Type {typeof(T).Name} must implement ITableEntity for table storage operations");
+        }
+
         return storageType switch
         {
             Constants.Storage.StorageType.Table when typeof(ITableEntity).IsAssignableFrom(typeof(T)) =>
@@ -68,6 +73,7 @@ public static class HandleCrudFunctions
             Constants.Storage.Operations.Delete,
             Constants.Storage.Operations.List
         };
+    }
 
     private static async Task<IEnumerable<T>> HandleTableStorageOperation<T>(
         string operation,
