@@ -8,7 +8,7 @@ using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Utils;
-using AzTwWebsiteApi.Models.BlogImage;
+using AzTwWebsiteApi.Models.Blog;
 
 namespace AzTwWebsiteApi.Services.Storage
 {
@@ -62,7 +62,11 @@ namespace AzTwWebsiteApi.Services.Storage
                     var blobClient = _containerClient.GetBlobClient(blobItem.Name);
                     var response = await blobClient.DownloadContentAsync();
                     var content = response.Value.Content.ToString();
-                    blobs.Add(JsonSerializer.Deserialize<T>(content));
+                    var deserialized = JsonSerializer.Deserialize<T>(content);
+                    if (deserialized != null)
+                    {
+                        blobs.Add(deserialized);
+                    }
                 }
 
                 return blobs;
@@ -174,7 +178,11 @@ namespace AzTwWebsiteApi.Services.Storage
                         var blobClient = _containerClient.GetBlobClient(blobItem.Name);
                         var response = await blobClient.DownloadContentAsync();
                         var content = response.Value.Content.ToString();
-                        blobs.Add(JsonSerializer.Deserialize<T>(content));
+                        var deserialized = JsonSerializer.Deserialize<T>(content);
+                        if (deserialized != null)
+                        {
+                            blobs.Add(deserialized);
+                        }
                     }
 
                     return (blobs, blobPage.ContinuationToken);
