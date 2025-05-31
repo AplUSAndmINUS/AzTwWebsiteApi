@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Functions\AzTwWebsiteApi.Functions.csproj" />
     <ProjectReference Include="..\Models\AzTwWebsiteApi.Models.csproj" />
   </ItemGroup>
 </Project>
