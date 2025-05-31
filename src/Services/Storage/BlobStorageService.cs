@@ -62,10 +62,14 @@ namespace AzTwWebsiteApi.Services.Storage
                     var blobClient = _containerClient.GetBlobClient(blobItem.Name);
                     var response = await blobClient.DownloadContentAsync();
                     var content = response.Value.Content.ToString();
-                    var deserialized = JsonSerializer.Deserialize<T>(content);
-                    if (deserialized != null)
+                    var deserializedObject = JsonSerializer.Deserialize<T>(content);
+                    if (deserializedObject != null)
                     {
-                        blobs.Add(deserialized);
+                        blobs.Add(deserializedObject);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to deserialize blob content: {BlobName}", blobItem.Name);
                     }
                 }
 
@@ -163,12 +167,7 @@ namespace AzTwWebsiteApi.Services.Storage
             try
             {
                 var blobs = new List<T>();
-                var options = new BlobsOptions
-                {
-                    PageSize = maxResults
-                };
-
-                var resultSegment = _containerClient.GetBlobsAsync(options)
+                var resultSegment = _containerClient.GetBlobsAsync()
                     .AsPages(continuationToken, maxResults);
 
                 await foreach (var blobPage in resultSegment)
@@ -178,10 +177,14 @@ namespace AzTwWebsiteApi.Services.Storage
                         var blobClient = _containerClient.GetBlobClient(blobItem.Name);
                         var response = await blobClient.DownloadContentAsync();
                         var content = response.Value.Content.ToString();
-                        var deserialized = JsonSerializer.Deserialize<T>(content);
-                        if (deserialized != null)
+                        var deserializedObject = JsonSerializer.Deserialize<T>(content);
+                        if (deserializedObject != null)
                         {
-                            blobs.Add(deserialized);
+                            blobs.Add(deserializedObject);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to deserialize blob content: {BlobName}", blobItem.Name);
                         }
                     }
 
