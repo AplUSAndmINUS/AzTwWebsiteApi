@@ -6,7 +6,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C65C54E5-5A1
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Functions", "Functions", "{2DAF8778-3DF4-420D-9D39-2DA6417F80E2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlogFunctions", "src\Functions\AzTwWebsiteApi.Functions.csproj", "{C94286B1-D263-491D-AEA9-1670C3226368}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzTwWebsiteApi.Functions", "src\Functions\AzTwWebsiteApi.Functions.csproj", "{C94286B1-D263-491D-AEA9-1670C3226368}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzTwWebsiteApi.Services", "src\Services\AzTwWebsiteApi.Services.csproj", "{5F953895-E6FD-4EA6-8131-3B979EB3FAB3}"
 EndProject

@@ -15,8 +15,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
-  <ItemGroup>    <ProjectReference Include="..\Models\AzTwWebsiteApi.Models.csproj" />
-    <ProjectReference Include="..\Services\AzTwWebsiteApi.Services.csproj" />
+  <ItemGroup>    
+    <ProjectReference Include="..\Models\AzTwWebsiteApi.Models.csproj" />
+    <ProjectReference Include="..\Services\AzTwWebsiteApi.Services.csproj">
       <Private>true</Private>
     </ProjectReference>
   </ItemGroup>

@@ -36,5 +36,39 @@ namespace AzTwWebsiteApi.Services.Blog
                 throw;
             }
         }
+
+        public async Task<BlogPost?> GetBlogPostWithImageAsync(string partitionKey, string rowKey, IBlobStorageService<BlogPost> blobStorageService)
+        {
+            try
+            {
+                _logger.LogInformation("Retrieving blog post with PartitionKey: {PartitionKey}, RowKey: {RowKey}", partitionKey, rowKey);
+
+                var blogPost = await _tableStorage.GetEntityAsync(partitionKey, rowKey);
+                if (blogPost == null)
+                {
+                    _logger.LogWarning("Blog post not found: PartitionKey={PartitionKey}, RowKey={RowKey}", partitionKey, rowKey);
+                    return null;
+                }
+
+                _logger.LogInformation("Retrieving associated image for blog post: {RowKey}", rowKey);
+                var imageBlob = await blobStorageService.GetBlobAsync(blogPost.ImageUrl);
+
+                if (imageBlob != null)
+                {
+                    blogPost.ImageUrl = imageBlob.ToString();
+                }
+                else
+                {
+                    _logger.LogWarning("Image blob is null for blog post: {RowKey}", rowKey);
+                }
+
+                return blogPost;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving blog post with image: PartitionKey={PartitionKey}, RowKey={RowKey}", partitionKey, rowKey);
+                throw;
+            }
+        }
     }
 }
