@@ -28,15 +28,15 @@ namespace AzTwWebsiteApi.Services.Storage
             _containerClient.CreateIfNotExists();
         }
 
-        public async Task<T> GetAsync(string id)
+        public async Task<T?> GetBlobAsync(string blobName)
         {
             try
             {
-                var blobClient = _containerClient.GetBlobClient(id);
+                var blobClient = _containerClient.GetBlobClient(blobName);
 
                 if (!await blobClient.ExistsAsync())
                 {
-                    _logger.LogWarning("Blob with ID {Id} not found", id);
+                    _logger.LogWarning("Blob {BlobName} not found", blobName);
                     return null;
                 }
 
@@ -46,12 +46,12 @@ namespace AzTwWebsiteApi.Services.Storage
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving blob with ID {Id}", id);
+                _logger.LogError(ex, "Error retrieving blob {BlobName}", blobName);
                 throw;
             }
         }
 
-        public async Task<IEnumerable<T>> GetAllAsync()
+        public async Task<IEnumerable<T>> GetAllBlobsAsync()
         {
             try
             {
@@ -69,135 +69,127 @@ namespace AzTwWebsiteApi.Services.Storage
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving blobs");
+                _logger.LogError(ex, "Error retrieving all blobs");
                 throw;
             }
         }
 
-        public asyng Task<T> AddEntityAsync(T entity)
+        public async Task<T> UploadBlobAsync(string blobName, T data, IDictionary<string, string>? metadata = null)
         {
             try
             {
-                var id = Guid.NewGuid().ToString();
-                var blobClient = _containerClient.GetBlobClient(id);
-                var content = JsonSerializer.Serialize(entity);
+                var blobClient = _containerClient.GetBlobClient(blobName);
+                var content = JsonSerializer.Serialize(data);
+                var options = new BlobUploadOptions();
                 
-                await blobClient.UploadAsync(BinaryData.FromString(content), overwrite: true);
+                if (metadata != null)
+                {
+                    options.Metadata = metadata;
+                }
                 
-                _logger.LogInformation("Successfully uploaded blob with ID {Id}", id);
-                return entity;
+                await blobClient.UploadAsync(BinaryData.FromString(content), options);
+                _logger.LogInformation("Successfully uploaded blob {BlobName}", blobName);
+                return data;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adding entity to blob storage");
+                _logger.LogError(ex, "Error uploading blob {BlobName}", blobName);
                 throw;
             }
         }
 
-        public async Task SetAsync(string id, T obj)
+        public async Task<T> UpdateBlobAsync(string blobName, T data, IDictionary<string, string>? metadata = null)
         {
             try
             {
-                var blobClient = _containerClient.GetBlobClient(id);
-                var content = JsonSerializer.Serialize(obj);
-                
-                await blobClient.UploadAsync(BinaryData.FromString(content), overwrite: true);
-                
-                _logger.LogInformation("Successfully uploaded blob with ID {Id}", id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error setting blob with ID {Id}", id);
-                throw;
-            }
-        }
-
-        public async Task UpdateAsync(string id, T obj)
-        {
-            try
-            {
-                var blobClient = _containerClient.GetBlobClient(id);
+                var blobClient = _containerClient.GetBlobClient(blobName);
 
                 if (!await blobClient.ExistsAsync())
                 {
-                    _logger.LogWarning("Blob with ID {Id} not found for update", id);
-                    return;
+                    _logger.LogWarning("Blob {BlobName} not found for update", blobName);
+                    throw new InvalidOperationException($"Blob {blobName} does not exist");
                 }
 
-                var content = JsonSerializer.Serialize(obj);
-                await blobClient.UploadAsync(BinaryData.FromString(content), overwrite: true);
+                var content = JsonSerializer.Serialize(data);
+                var options = new BlobUploadOptions();
                 
-                _logger.LogInformation("Successfully updated blob with ID {Id}", id);
+                if (metadata != null)
+                {
+                    options.Metadata = metadata;
+                }
+
+                await blobClient.UploadAsync(BinaryData.FromString(content), options);
+                _logger.LogInformation("Successfully updated blob {BlobName}", blobName);
+                return data;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating blob with ID {Id}", id);
+                _logger.LogError(ex, "Error updating blob {BlobName}", blobName);
                 throw;
             }
         }
 
-        public async Task DeleteAsync(string id)
+        public async Task DeleteBlobAsync(string blobName)
         {
             try
             {
-                var blobClient = _containerClient.GetBlobClient(id);
+                var blobClient = _containerClient.GetBlobClient(blobName);
 
                 if (await blobClient.ExistsAsync())
                 {
                     await blobClient.DeleteAsync();
-                    _logger.LogInformation("Successfully deleted blob with ID {Id}", id);
+                    _logger.LogInformation("Successfully deleted blob {BlobName}", blobName);
                 }
                 else
                 {
-                    _logger.LogWarning("Blob with ID {Id} not found for deletion", id);
+                    _logger.LogWarning("Blob {BlobName} not found for deletion", blobName);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting blob with ID {Id}", id);
+                _logger.LogError(ex, "Error deleting blob {BlobName}", blobName);
+                throw;
+            }
+        }
+
+        public async Task<(IEnumerable<T> Items, string? ContinuationToken)> GetPagedBlobsAsync(
+            int maxResults,
+            string? continuationToken = null)
+        {
+            try
+            {
+                var blobs = new List<T>();
+                var options = new BlobsOptions
+                {
+                    PageSize = maxResults
+                };
+
+                var resultSegment = _containerClient.GetBlobsAsync(options)
+                    .AsPages(continuationToken, maxResults);
+
+                await foreach (var blobPage in resultSegment)
+                {
+                    foreach (var blobItem in blobPage.Values)
+                    {
+                        var blobClient = _containerClient.GetBlobClient(blobItem.Name);
+                        var response = await blobClient.DownloadContentAsync();
+                        var content = response.Value.Content.ToString();
+                        blobs.Add(JsonSerializer.Deserialize<T>(content));
+                    }
+
+                    return (blobs, blobPage.ContinuationToken);
+                }
+
+                return (blobs, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving paged blobs");
                 throw;
             }
         }
     }
 }
-
-// // TODO: Remove this code snippet
-
-// ```csharp
-// using System;
-// using System.Collections.Generic;
-// using System.IO;
-// using System.Text.Json;
-// using System.Threading.Tasks;
-// using Azure.Storage.Blobs;
-// using Azure.Storage.Blobs.Models;
-// using Microsoft.Extensions.Configuration;
-// using Microsoft.Ext=ensions.Logging;
-// using AzTwWebsiteApi.Utils;
-// using AzTwWebsiteApi.Models.BlogImage;
-
-// namespace AzTwWebsiteApi.Services.Storage
-// {
-//     public class BlobBlogImageStorageService : IBlobBlogImageStorageService
-//     {
-//         private readonly BlobServiceClient _blobServiceClient;
-//         private readonly IConfiguration _configuration;
-//         private readonly ILogger<BlobBlogImageStorageService> _logger;
-
-//         public BlobBlogImageStorageService(IConfiguration configuration, ILogger<BlobBlogImageStorageService> logger)
-//         {
-//             _configuration = configuration;
-//             _logger = logger;
-//             var credential = ManagedIdentityConfig.GetCredential(configuration);
-//             var storageAccountUrl = configuration["StorageAccountUrl"];
-//             _blobServiceClient = new BlobServiceClient(new Uri(storageAccountUrl), credential);
-//         }
-
-//         public async Task<BlogPost> GetBlogPostAsync(string id)
-//         {
-//             try
-//             {
-//                 var containerClient = _blobServiceClient.GetBlobContainerClient(Constants.BlobContainers.BlogPosts);
 //                 var blobClient = containerClient.GetBlobClient($"{id}.json");
 
 //                 if (!await blobClient.ExistsAsync())
