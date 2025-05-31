@@ -23,14 +23,13 @@ public static class HandleCrudFunctions
         var storageConnectionString = Environment.GetEnvironmentVariable("StorageConnectionString")
             ?? throw new InvalidOperationException("Storage connection string not configured");
 
-        if (storageType == Constants.Storage.StorageType.Table && !typeof(ITableEntity).IsAssignableFrom(typeof(T)))
+        if (storageType == Constants.Storage.StorageType.Table)
         {
-            throw new ArgumentException($"Type {typeof(T).Name} must implement ITableEntity for table storage operations");
-        }
+            if (!typeof(ITableEntity).IsAssignableFrom(typeof(T)))
+            {
+                throw new ArgumentException($"Type {typeof(T).Name} must implement ITableEntity for table storage operations");
+            }
 
-        if (storageType == Constants.Storage.StorageType.Table && typeof(ITableEntity).IsAssignableFrom(typeof(T)))
-        {
-            // Use reflection to call the generic method with the correct constraint
             return await HandleTableStorageOperationWrapper<T>(operation, serviceName, storageConnectionString, data, filter, pageSize, continuationToken);
         }
         else if (storageType == Constants.Storage.StorageType.Blob)
@@ -123,7 +122,7 @@ public static class HandleCrudFunctions
     }
 
     private static async Task<IEnumerable<T>> HandleBlobStorageOperation<T>(
-        string operation,
+    string operation,
         string containerName,
         string connectionString,
         T? data = default,

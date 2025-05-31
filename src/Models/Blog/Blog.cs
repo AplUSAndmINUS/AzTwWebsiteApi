@@ -6,8 +6,8 @@ namespace AzTwWebsiteApi.Models.Blog
     public class BlogPost : ITableEntity
     {
         public string Id { get; set; } = Guid.NewGuid().ToString(); // Unique identifier for the blog post
-        public string PartitionKey { get; set; } = "BlogPosts";
-        public string? RowKey { get; set; }
+        public string PartitionKey { get; set; } // Initialize in the constructor
+        public string RowKey { get; set; } = Guid.NewGuid().ToString();
         public DateTimeOffset? Timestamp { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
@@ -15,24 +15,38 @@ namespace AzTwWebsiteApi.Models.Blog
         public string AuthorId { get; set; } = string.Empty;
         public string Tags { get; set; } = string.Empty;
         public ETag ETag { get; set; }
+
+        public BlogPost()
+        {
+            PartitionKey = Id; // Initialize PartitionKey in the constructor
+        }
     }
+
     public class BlogComment : ITableEntity
     {
-        public string PartitionKey => BlogPostId; // Use Comment ID for grouping
-        public string RowKey => Id; // Unique identifier for the comment
+        public string PartitionKey { get; set; } // Initialize in the constructor
+        public string RowKey { get; set; } = Guid.NewGuid().ToString(); // Unique identifier for the comment
+
         public ETag ETag { get; set; }
         public DateTimeOffset? Timestamp { get; set; }
-        public required string Id { get; set; }
-        public required string BlogPostId { get; set; } // Reference to the blog post
-        public required string AuthorId { get; set; } // Reference to the author
-        public required string Content { get; set; }
+        
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        public string BlogPostId { get; set; } = string.Empty; // Reference to the blog post
+        public string AuthorId { get; set; } = string.Empty; // Reference to the author
+        public string Content { get; set; } = string.Empty;
+
         public DateTime PublishDate { get; set; }
         public DateTime LastModified { get; set; }
-        public required bool IsApproved { get; set; } = false;
-        public required bool IsSpam { get; set; } = false;
-        string ITableEntity.PartitionKey { get => PartitionKey; set => throw new NotImplementedException(); }
-        string ITableEntity.RowKey { get => RowKey; set => throw new NotImplementedException(); }
+
+        public bool IsApproved { get; set; } = false;
+        public bool IsSpam { get; set; } = false;
+
+        public BlogComment()
+        {
+            PartitionKey = BlogPostId; // Initialize PartitionKey in the constructor
+        }
     }
+
 
     public class BlogImage
     {
@@ -64,13 +78,23 @@ namespace AzTwWebsiteApi.Models.Blog
   }
     public class BlogCategory
     {
-        public static string PartitionKey => "BlogCategory"; // In BlogComment to optimize queries
+        public string Id { get; set; } = Guid.NewGuid().ToString(); // Unique identifier for the category
+        public string PartitionKey { get; set; } // Initialize in the constructor
         public string RowKey => Id; // Unique identifier for the category
-        public required string Id { get; set; }
-        public required string Name { get; set; }
-        public required string Description { get; set; }
-        public required string Slug { get; set; } // URL-friendly version of the category name
-        public List<string> PostIds { get; set; } = new(); // Efficient post-category linking
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Slug { get; set; } = string.Empty; // URL-friendly version of the category name
+        private List<string> _postIds = new();
+        public string PostIdsSerialized
+        {
+            get => string.Join(",", _postIds); // Convert list to comma-separated string
+            set => _postIds = value.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(); // Convert back to list
+        }
 
+        public BlogCategory()
+        {
+            Slug = string.IsNullOrWhiteSpace(Slug) ? Guid.NewGuid().ToString() : Slug;
+            PartitionKey = $"Category-{Uri.EscapeDataString(Slug)}";
+        }
     }
 }
