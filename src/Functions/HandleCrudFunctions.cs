@@ -203,7 +203,8 @@ public class HandleCrudFunctions
                 if (blob != null) result.Items.Add(blob);
                 if (options.IncludeMetadata == true)
                 {
-                    result.Metadata = await blobStorage.GetBlobMetadataAsync(options.BlobName);
+                    var metadata = await blobStorage.GetBlobMetadataAsync(options.BlobName);
+                    result.Metadata = metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                 }
                 break;
 
@@ -221,7 +222,7 @@ public class HandleCrudFunctions
                 
                 if (options.Metadata != null)
                 {
-                    await blobStorage.SetBlobMetadataAsync(options.BlobName, options.Metadata);
+                    await blobStorage.UpdateBlobMetadataAsync(options.BlobName, options.Metadata);
                 }
                 
                 result.Items.Add(uploadedBlob);
