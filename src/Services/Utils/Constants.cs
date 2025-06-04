@@ -44,6 +44,45 @@ namespace AzTwWebsiteApi.Services.Utils
                 Table
             }
 
+            public static class Operations
+            {
+                // Common operations
+                public const string Get = "get";
+                public const string Set = "set";
+                public const string Update = "update";
+                public const string Delete = "delete";
+                public const string List = "list";
+
+                // Specialized operations
+                public const string GetPaged = "get-paged";
+                public const string GetWithMetadata = "get-with-metadata";
+                public const string SetWithMetadata = "set-with-metadata";
+                public const string UpdateMetadata = "update-metadata";
+                public const string Copy = "copy";
+                public const string Move = "move";
+            }
+
+            public static class ErrorCodes
+            {
+                public const string NotFound = "ResourceNotFound";
+                public const string AlreadyExists = "ResourceAlreadyExists";
+                public const string InvalidOperation = "InvalidOperation";
+                public const string ValidationError = "ValidationError";
+                public const string StorageError = "StorageError";
+            }
+
+            public static class MetadataKeys
+            {
+                public const string ContentType = "ContentType";
+                public const string CreatedBy = "CreatedBy";
+                public const string CreatedDate = "CreatedDate";
+                public const string ModifiedBy = "ModifiedBy";
+                public const string ModifiedDate = "ModifiedDate";
+                public const string Tags = "Tags";
+                public const string Category = "Category";
+                public const string Status = "Status";
+            }
+
             public static class EntityTypes
             {
                 // Table Storage entities
@@ -70,15 +109,6 @@ namespace AzTwWebsiteApi.Services.Utils
                 public const string LiveStreamsBlob = "livestreams-data";
                 public const string PortfolioImages = "portfolio-images";
                 public const string Video = "video";
-            }
-
-            public static class Operations
-            {
-                public const string Get = "get";
-                public const string Set = "set";
-                public const string Update = "update";
-                public const string Delete = "delete";
-                public const string List = "list";
             }
 
             public static readonly Dictionary<string, StorageType> EntityStorageTypes = new()
