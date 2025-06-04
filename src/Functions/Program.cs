@@ -35,6 +35,11 @@ var host = new HostBuilder()
         // Add utility services
         services.AddSingleton<IMetricsService, MetricsService>();
 
+        // Register our split blog function classes
+        services.AddScoped<BlogPostFunctions>();
+        services.AddScoped<BlogCommentFunctions>();
+        services.AddScoped<BlogImageFunctions>();
+
         // Configure storage services
         var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
             ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
@@ -61,17 +66,32 @@ void ConfigureBlogServices(IServiceCollection services, string storageConnection
             metrics: metrics);
     });
 
-    // Configure Blob Storage services
-    services.AddSingleton<IBlobStorageService<BlogPost>>(sp =>
+    // Configure Blob Storage services for blog images
+    services.AddSingleton<IBlobStorageService<BlogImage>>(sp =>
     {
-        var logger = sp.GetRequiredService<ILogger<BlobStorageService<BlogPost>>>();
+        var logger = sp.GetRequiredService<ILogger<BlobStorageService<BlogImage>>>();
         var metrics = sp.GetRequiredService<IMetricsService>();
         var containerName = StorageSettings.TransformMockName(
             Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mock-blog-images");
         
-        return new BlobStorageService<BlogPost>(
+        return new BlobStorageService<BlogImage>(
             connectionString: storageConnectionString,
             containerName: containerName,
+            logger: logger,
+            metrics: metrics);
+    });
+
+    // Configure Table Storage for comments
+    services.AddSingleton<ITableStorageService<BlogComment>>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<TableStorageService<BlogComment>>>();
+        var metrics = sp.GetRequiredService<IMetricsService>();
+        var tableName = StorageSettings.TransformMockName(
+            Environment.GetEnvironmentVariable("BlogCommentsTableName") ?? "mockblogcomments");
+        
+        return new TableStorageService<BlogComment>(
+            connectionString: storageConnectionString,
+            tableName: tableName,
             logger: logger,
             metrics: metrics);
     });
