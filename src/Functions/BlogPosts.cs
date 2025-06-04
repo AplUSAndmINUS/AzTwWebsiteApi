@@ -240,23 +240,94 @@ public class BlogPostFunctions
 
         try
         {
-            var blogPost = await JsonSerializer.DeserializeAsync<BlogPost>(req.Body);
-            if (blogPost == null) throw new ArgumentNullException(nameof(blogPost));
-
-            blogPost.PartitionKey = id;
-            blogPost.RowKey = id;
-            blogPost.Id = id;
-
-            var options = new CrudOperationOptions
+            // First, try to get the existing post to ensure it exists and get its keys
+            var getOptions = new CrudOperationOptions
             {
                 ConnectionString = _connectionString,
-                Data = blogPost
+                Filter = $"RowKey eq '{id}'"  // Search by RowKey which could be numeric or full ID
+            };
+
+            var existingResult = await _crudFunctions.HandleCrudOperation<BlogPost>(
+                operation: Constants.Storage.Operations.Get,
+                entityType: _blogPostsTableName,
+                options: getOptions);
+
+            if (!existingResult.Items.Any())
+            {
+                _logger.LogWarning("Blog post with ID {Id} not found", id);
+                return await CreateNotFoundResponse(req, $"Blog post with ID {id} not found");
+            }
+
+            var existingPost = existingResult.Items.First();
+            _logger.LogInformation("Found existing post: Id={Id}, PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                existingPost.Id, existingPost.PartitionKey, existingPost.RowKey);
+
+            // Parse the update data
+            using var jsonDoc = await JsonDocument.ParseAsync(req.Body);
+            var element = jsonDoc.RootElement;
+
+            string TryGetPropertyCaseInsensitive(JsonElement elem, string propertyName, string defaultValue)
+            {
+                foreach (var property in elem.EnumerateObject())
+                {
+                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return property.Value.GetString() ?? defaultValue;
+                    }
+                }
+                return defaultValue;
+            }
+
+            DateTime? TryGetDateTimeCaseInsensitive(JsonElement elem, string propertyName)
+            {
+                foreach (var property in elem.EnumerateObject())
+                {
+                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            return property.Value.GetDateTime();
+                        }
+                        catch
+                        {
+                            return null;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // Update the existing post with new values, keeping the original values if not provided
+            var updatedPost = new BlogPost
+            {
+                Id = existingPost.Id,
+                PartitionKey = existingPost.PartitionKey,
+                RowKey = existingPost.RowKey,
+                Title = TryGetPropertyCaseInsensitive(element, "title", existingPost.Title),
+                Content = TryGetPropertyCaseInsensitive(element, "content", existingPost.Content),
+                AuthorId = TryGetPropertyCaseInsensitive(element, "author", existingPost.AuthorId),
+                ImageUrl = TryGetPropertyCaseInsensitive(element, "imageUrl", existingPost.ImageUrl),
+                Tags = TryGetPropertyCaseInsensitive(element, "tags", existingPost.Tags),
+                Status = TryGetPropertyCaseInsensitive(element, "status", existingPost.Status),
+                PublishDate = TryGetDateTimeCaseInsensitive(element, "publishedDate") ?? existingPost.PublishDate,
+                LastModified = DateTime.UtcNow,
+                ETag = existingPost.ETag  // Preserve the ETag for optimistic concurrency
+            };
+
+            _logger.LogInformation(
+                "Updating blog post: Id={Id}, Title={Title}, Author={Author}, Status={Status}", 
+                updatedPost.Id, updatedPost.Title, updatedPost.AuthorId, updatedPost.Status);
+
+            var updateOptions = new CrudOperationOptions
+            {
+                ConnectionString = _connectionString,
+                Data = updatedPost
             };
 
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Update,
                 entityType: _blogPostsTableName,
-                options: options);
+                options: updateOptions);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(result.Items.First());
