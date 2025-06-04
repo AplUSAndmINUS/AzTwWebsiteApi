@@ -1,6 +1,7 @@
 using Azure;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
+using AzTwWebsiteApi.Services.Utils;
 
 namespace AzTwWebsiteApi.Services.Storage;
 
@@ -8,13 +9,20 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
 {
     private readonly TableClient _tableClient;
     private readonly ILogger<TableStorageService<T>> _logger;
+    private readonly RetryPolicy _retryPolicy;
+    private readonly CircuitBreaker _circuitBreaker;
+    private readonly IMetricsService? _metrics;
 
     public TableStorageService(
         string connectionString,
         string tableName,
-        ILogger<TableStorageService<T>> logger)
+        ILogger<TableStorageService<T>> logger,
+        IMetricsService? metrics = null)
     {
         _logger = logger;
+        _retryPolicy = new RetryPolicy(logger);
+        _circuitBreaker = new CircuitBreaker(logger);
+        _metrics = metrics;
         
         try
         {
@@ -34,97 +42,154 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
 
     public async Task<T?> GetEntityAsync(string partitionKey, string rowKey)
     {
-        try
+        var operation = $"GetEntity_{typeof(T).Name}";
+        using var timer = _metrics != null ? new OperationTimer(operation, _metrics) : null;
+
+        return await _circuitBreaker.ExecuteAsync(async () =>
         {
-            var response = await _tableClient.GetEntityAsync<T>(partitionKey, rowKey);
-            return response.Value;
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            _logger.LogInformation("Entity not found: PartitionKey={PartitionKey}, RowKey={RowKey}", 
-                partitionKey, rowKey);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving entity: PartitionKey={PartitionKey}, RowKey={RowKey}", 
-                partitionKey, rowKey);
-            throw;
-        }
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    var response = await _tableClient.GetEntityAsync<T>(partitionKey, rowKey);
+                    _metrics?.IncrementCounter($"{operation}_Success");
+                    return response.Value;
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    _logger.LogInformation("Entity not found: PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                        partitionKey, rowKey);
+                    _metrics?.IncrementCounter($"{operation}_NotFound");
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving entity: PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                        partitionKey, rowKey);
+                    _metrics?.IncrementCounter($"{operation}_Error");
+                    throw;
+                }
+            }, operation);
+        }, operation);
     }
 
     public async Task<IEnumerable<T>> GetAllAsync(string? filter = null)
     {
-        try
-        {
-            _logger.LogInformation("Fetching entities with filter: {Filter}", filter ?? "none");
-            var results = new List<T>();
-            AsyncPageable<T> queryResults = _tableClient.QueryAsync<T>(filter);
+        var operation = $"GetAll_{typeof(T).Name}";
+        using var timer = _metrics != null ? new OperationTimer(operation, _metrics) : null;
 
-            await foreach (var entity in queryResults)
+        return await _circuitBreaker.ExecuteAsync(async () =>
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
             {
-                results.Add(entity);
-            }
+                try
+                {
+                    _logger.LogInformation("Fetching entities with filter: {Filter}", filter ?? "none");
+                    var results = new List<T>();
+                    AsyncPageable<T> queryResults = _tableClient.QueryAsync<T>(filter);
 
-            _logger.LogInformation("Retrieved {Count} entities", results.Count);
-            return results;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving entities. Filter: {Filter}, Error: {Error}", 
-                filter, ex.Message);
-            throw;
-        }
+                    await foreach (var entity in queryResults)
+                    {
+                        results.Add(entity);
+                    }
+
+                    _logger.LogInformation("Retrieved {Count} entities", results.Count);
+                    _metrics?.IncrementCounter($"{operation}_Success");
+                    _metrics?.RecordValue($"{operation}_Count", results.Count);
+                    return results;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving entities with filter: {Filter}", filter);
+                    _metrics?.IncrementCounter($"{operation}_Error");
+                    throw;
+                }
+            }, operation);
+        }, operation);
     }
 
     public async Task<T> AddEntityAsync(T entity)
     {
-        try
+        var operation = $"AddEntity_{typeof(T).Name}";
+        using var timer = new OperationTimer(operation, _metrics);
+
+        return await _circuitBreaker.ExecuteAsync(async () =>
         {
-            await _tableClient.AddEntityAsync(entity);
-            _logger.LogInformation("Entity added: {Entity}", entity);
-            return entity;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error adding entity: {Entity}. Error: {Error}", entity, ex.Message);
-            throw;
-        }
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    await _tableClient.AddEntityAsync(entity);
+                    _logger.LogInformation("Entity added: {Entity}", entity);
+                    _metrics?.IncrementCounter($"{operation}_Success");
+                    return entity;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error adding entity: {Entity}. Error: {Error}", entity, ex.Message);
+                    _metrics?.IncrementCounter($"{operation}_Error");
+                    throw;
+                }
+            }, operation);
+        }, operation);
     }
 
     public async Task UpdateEntityAsync(T entity)
     {
-        try
+        var operation = $"UpdateEntity_{typeof(T).Name}";
+        using var timer = new OperationTimer(operation, _metrics);
+
+        await _circuitBreaker.ExecuteAsync(async () =>
         {
-            await _tableClient.UpdateEntityAsync(entity, ETag.All, TableUpdateMode.Replace);
-            _logger.LogInformation("Entity updated: {Entity}", entity);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating entity: {Entity}. Error: {Error}", entity, ex.Message);
-            throw;
-        }
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    await _tableClient.UpdateEntityAsync(entity, ETag.All, TableUpdateMode.Replace);
+                    _logger.LogInformation("Entity updated: {Entity}", entity);
+                    _metrics?.IncrementCounter($"{operation}_Success");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating entity: {Entity}. Error: {Error}", entity, ex.Message);
+                    _metrics?.IncrementCounter($"{operation}_Error");
+                    throw;
+                }
+            }, operation);
+        }, operation);
     }
 
     public async Task DeleteEntityAsync(string partitionKey, string rowKey)
     {
-        try
+        var operation = $"DeleteEntity_{typeof(T).Name}";
+        using var timer = new OperationTimer(operation, _metrics);
+
+        await _circuitBreaker.ExecuteAsync(async () =>
         {
-            await _tableClient.DeleteEntityAsync(partitionKey, rowKey);
-            _logger.LogInformation("Entity deleted: PartitionKey={PartitionKey}, RowKey={RowKey}", 
-                partitionKey, rowKey);
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            _logger.LogInformation("Entity to delete not found: PartitionKey={PartitionKey}, RowKey={RowKey}", 
-                partitionKey, rowKey);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting entity: PartitionKey={PartitionKey}, RowKey={RowKey}. Error: {Error}", 
-                partitionKey, rowKey, ex.Message);
-            throw;
-        }
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    await _tableClient.DeleteEntityAsync(partitionKey, rowKey);
+                    _logger.LogInformation("Entity deleted: PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                        partitionKey, rowKey);
+                    _metrics?.IncrementCounter($"{operation}_Success");
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    _logger.LogInformation("Entity to delete not found: PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                        partitionKey, rowKey);
+                    _metrics?.IncrementCounter($"{operation}_NotFound");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error deleting entity: PartitionKey={PartitionKey}, RowKey={RowKey}. Error: {Error}", 
+                        partitionKey, rowKey, ex.Message);
+                    _metrics?.IncrementCounter($"{operation}_Error");
+                    throw;
+                }
+            }, operation);
+        }, operation);
     }
 
     public async Task<(IEnumerable<T> Items, string? ContinuationToken)> GetPagedResultsAsync(
@@ -132,32 +197,44 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         string? continuationToken = null,
         string? filter = null)
     {
-        try
-        {
-            var results = new List<T>();
-            var queryResults = _tableClient.QueryAsync<T>(
-                filter: filter,
-                maxPerPage: maxPerPage);
+        var operation = $"GetPagedResults_{typeof(T).Name}";
+        using var timer = new OperationTimer(operation, _metrics);
 
-            await foreach (var page in queryResults.AsPages(continuationToken, maxPerPage))
+        return await _circuitBreaker.ExecuteAsync(async () =>
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
             {
-                results.AddRange(page.Values);
-                if (results.Count >= maxPerPage)
+                try
                 {
-                    _logger.LogInformation("Paged results retrieved. Count: {Count}, ContinuationToken: {ContinuationToken}", 
-                        results.Count, page.ContinuationToken);
-                    return (results, page.ContinuationToken);
-                }
-            }
+                    var results = new List<T>();
+                    var queryResults = _tableClient.QueryAsync<T>(
+                        filter: filter,
+                        maxPerPage: maxPerPage);
 
-            _logger.LogInformation("All results retrieved. Total count: {Count}", results.Count);
-            return (results, null);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving paged results. MaxPerPage={MaxPerPage}, ContinuationToken={ContinuationToken}, Filter={Filter}, Error: {Error}", 
-                maxPerPage, continuationToken, filter, ex.Message);
-            throw;
-        }
+                    await foreach (var page in queryResults.AsPages(continuationToken, maxPerPage))
+                    {
+                        results.AddRange(page.Values);
+                        if (results.Count >= maxPerPage)
+                        {
+                            _logger.LogInformation("Paged results retrieved. Count: {Count}, ContinuationToken: {ContinuationToken}", 
+                                results.Count, page.ContinuationToken);
+                            _metrics?.IncrementCounter($"{operation}_Success", results.Count);
+                            return (results, page.ContinuationToken);
+                        }
+                    }
+
+                    _logger.LogInformation("All results retrieved. Total count: {Count}", results.Count);
+                    _metrics?.IncrementCounter($"{operation}_Success", results.Count);
+                    return (results, null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving paged results. MaxPerPage={MaxPerPage}, ContinuationToken={ContinuationToken}, Filter={Filter}, Error: {Error}", 
+                        maxPerPage, continuationToken, filter, ex.Message);
+                    _metrics?.IncrementCounter($"{operation}_Error");
+                    throw;
+                }
+            }, operation);
+        }, operation);
     }
 }

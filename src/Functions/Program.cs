@@ -6,6 +6,8 @@ using Microsoft.Azure.Functions.Worker;
 using AzTwWebsiteApi.Models.Blog;
 using AzTwWebsiteApi.Services.Blog;
 using AzTwWebsiteApi.Services.Storage;
+using AzTwWebsiteApi.Functions;
+using AzTwWebsiteApi.Services.Utils;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -28,17 +30,51 @@ var host = new HostBuilder()
 
         // Add our custom services
         services.AddScoped<IBlogService, BlogService>();
+        services.AddScoped<HandleCrudFunctions>();
+        
+        // Add utility services
+        services.AddSingleton<IMetricsService, MetricsService>();
 
-        // Configure Azure Table Storage with connection string
-        services.AddSingleton<ITableStorageService<BlogPost>>(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<TableStorageService<BlogPost>>>();
-            var tableName = Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "blogposts";
-            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
-                ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
-            return new TableStorageService<BlogPost>(connectionString, tableName, logger);
-        });
+        // Configure storage services
+        var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
+            ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
+
+        // Configure Blog-related services
+        ConfigureBlogServices(services, storageConnectionString);
     })
     .Build();
+
+void ConfigureBlogServices(IServiceCollection services, string storageConnectionString)
+{
+    // Configure Table Storage services
+    services.AddSingleton<ITableStorageService<BlogPost>>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<TableStorageService<BlogPost>>>();
+        var metrics = sp.GetRequiredService<IMetricsService>();
+        var tableName = StorageSettings.TransformMockName(
+            Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog");
+        
+        return new TableStorageService<BlogPost>(
+            connectionString: storageConnectionString,
+            tableName: tableName,
+            logger: logger,
+            metrics: metrics);
+    });
+
+    // Configure Blob Storage services
+    services.AddSingleton<IBlobStorageService<BlogPost>>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<BlobStorageService<BlogPost>>>();
+        var metrics = sp.GetRequiredService<IMetricsService>();
+        var containerName = StorageSettings.TransformMockName(
+            Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mock-blog-images");
+        
+        return new BlobStorageService<BlogPost>(
+            connectionString: storageConnectionString,
+            containerName: containerName,
+            logger: logger,
+            metrics: metrics);
+    });
+}
 
 host.Run();

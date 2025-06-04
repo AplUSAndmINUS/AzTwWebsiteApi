@@ -35,13 +35,21 @@ namespace AzTwWebsiteApi.Functions;
 public class BlogFunctions
 {
     private readonly ILogger<BlogFunctions> _logger;
+    private readonly HandleCrudFunctions _crudFunctions;
+    private readonly IMetricsService _metrics;
     private readonly string _blogPostsTableName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog");
     private readonly string _blogCommentsTableName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogCommentsTableName") ?? "mockblogcomments");
     private readonly string _blogImagesContainerName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mock-blog-images");
 
-    public BlogFunctions(ILogger<BlogFunctions> logger)
+    public BlogFunctions(
+        ILogger<BlogFunctions> logger,
+        HandleCrudFunctions crudFunctions,
+        IMetricsService metrics)
     {
         _logger = logger;
+        _crudFunctions = crudFunctions;
+        _metrics = metrics;
+        
         _logger.LogInformation("BlogFunctions initialized with settings:");
         _logger.LogInformation("Using blog comments table name: {TableName}", _blogCommentsTableName);
         _logger.LogInformation("Using blog posts table name: {TableName}", _blogPostsTableName);
@@ -53,7 +61,9 @@ public class BlogFunctions
     public async Task<HttpResponseData> GetAllBlogPosts(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts")] HttpRequestData req)
     {
-        _logger.LogInformation("Function Start: {Module} - GetAllBlogPosts", Constants.Modules.Blog);
+        const string operation = "GetAllBlogPosts";
+        using var timer = new OperationTimer(operation, _metrics);
+        _logger.LogInformation("Function Start: {Module} - {Operation}", Constants.Modules.Blog, operation);
 
         try
         {
@@ -63,11 +73,14 @@ public class BlogFunctions
             string? continuationToken = query["continuationToken"];
 
             // Call HandleCrudOperation with transformed table name
-            var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
+            var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: _blogPostsTableName,
+                entityType: Constants.Storage.EntityTypes.Blog,  // Use the constant instead of transformed name
                 pageSize: pageSize,
                 continuationToken: continuationToken);
+
+            _metrics.IncrementCounter($"{operation}_Success");
+            _metrics.RecordValue($"{operation}_ResultCount", result.Count());
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(result);
@@ -75,7 +88,8 @@ public class BlogFunctions
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting blog posts: {Error}", ex.Message);
+            _metrics.IncrementCounter($"{operation}_Error");
+            _logger.LogError(ex, "Error in {Operation}: {Error}", operation, ex.Message);
             return await CreateErrorResponse(req, ex);
         }
     }
@@ -90,9 +104,9 @@ public class BlogFunctions
 
         try
         {
-            var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
+            var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: _blogPostsTableName,
+                entityType: Constants.Storage.EntityTypes.Blog,  // Use the constant instead of transformed name
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             if (!result.Any())
@@ -127,9 +141,9 @@ public class BlogFunctions
             blogPost.PartitionKey = blogPost.Id;
             blogPost.RowKey = blogPost.Id;
 
-            var result = await HandleCrudFunctions.HandleCrudOperation(
+            var result = await _crudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Set,
-                entityType: _blogPostsTableName,
+                entityType: Constants.Storage.EntityTypes.Blog,  // Use the constant instead of transformed name
                 data: blogPost);
 
             var response = req.CreateResponse(HttpStatusCode.Created);
@@ -160,9 +174,9 @@ public class BlogFunctions
             blogPost.RowKey = id;
             blogPost.Id = id;
 
-            var result = await HandleCrudFunctions.HandleCrudOperation(
+            var result = await _crudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Update,
-                entityType: _blogPostsTableName,
+                entityType: Constants.Storage.EntityTypes.Blog,  // Use the constant instead of transformed name
                 data: blogPost);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
@@ -186,9 +200,9 @@ public class BlogFunctions
 
         try
         {
-            await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
+            await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Delete,
-                entityType: _blogPostsTableName,
+                entityType: Constants.Storage.EntityTypes.Blog,  // Use the constant instead of transformed name
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             return req.CreateResponse(HttpStatusCode.NoContent);
@@ -203,11 +217,14 @@ public class BlogFunctions
     private async Task<HttpResponseData> CreateErrorResponse(HttpRequestData req, Exception ex)
     {
         var response = req.CreateResponse(HttpStatusCode.InternalServerError);
-        await response.WriteAsJsonAsync(new
+        var error = new
         {
-            error = "An error occurred while processing the request",
-            message = ex.Message
-        });
+            Message = "An error occurred processing your request",
+            Details = ex.Message,
+            TraceId = System.Diagnostics.Activity.Current?.Id ?? "No trace ID available"
+        };
+        
+        await response.WriteAsJsonAsync(error);
         return response;
     }
 
@@ -226,7 +243,7 @@ public class BlogFunctions
         _logger.LogInformation("Function Start: {Module} - GetBlogCommentsByPostId. PostId: {PostId}", Constants.Modules.Blog, postId);
         try
         {
-            var comments = await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+            var comments = await _crudFunctions.HandleCrudOperation<BlogComment>(
                 operation: Constants.Storage.Operations.Get,
                 entityType: _blogPostsTableName,
                 filter: $"PartitionKey eq '{postId}'");
@@ -263,7 +280,7 @@ public class BlogFunctions
             blogComment.PartitionKey = postId;
             blogComment.RowKey = blogComment.Id;
 
-            var comment = await HandleCrudFunctions.HandleCrudOperation(
+            var comment = await _crudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Set,
                 entityType: _blogCommentsTableName,
                 data: blogComment);
@@ -293,7 +310,7 @@ public class BlogFunctions
             blogComment.PartitionKey = postId;
             blogComment.RowKey = commentId;
 
-            var comment = await HandleCrudFunctions.HandleCrudOperation(
+            var comment = await _crudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Update,
                 entityType: _blogCommentsTableName,
                 data: blogComment);
@@ -317,7 +334,7 @@ public class BlogFunctions
         _logger.LogInformation("Function Start: {Module} - DeleteBlogComment. PostId: {PostId}, CommentId: {CommentId}", Constants.Modules.Blog, postId, commentId);
         try
         {
-            await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+            await _crudFunctions.HandleCrudOperation<BlogComment>(
                 operation: Constants.Storage.Operations.Delete,
                 entityType: _blogCommentsTableName,
                 filter: $"PartitionKey eq '{postId}' and RowKey eq '{commentId}'");
@@ -340,7 +357,7 @@ public class BlogFunctions
 
         try
         {
-            var image = await HandleCrudFunctions.HandleCrudOperation<BlogImage>(
+            var image = await _crudFunctions.HandleCrudOperation<BlogImage>(
                 operation: Constants.Storage.Operations.Get,
                 entityType: _blogImagesContainerName,
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
@@ -369,7 +386,7 @@ public class BlogFunctions
             var blogImage = await JsonSerializer.DeserializeAsync<BlogImage>(req.Body);
             if (blogImage == null) throw new ArgumentNullException(nameof(blogImage));
 
-            var image = await HandleCrudFunctions.HandleCrudOperation(
+            var image = await _crudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Set,
                 entityType: _blogImagesContainerName,
                 data: blogImage);

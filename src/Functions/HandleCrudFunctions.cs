@@ -7,74 +7,86 @@ using AzTwWebsiteApi.Services.Utils;
 
 namespace AzTwWebsiteApi.Functions;
 
-public static class HandleCrudFunctions
+public class HandleCrudFunctions
 {
-    private static readonly ILoggerFactory LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.AddConsole());
+    private readonly ILogger<HandleCrudFunctions> _logger;
+    private readonly IMetricsService _metrics;
+    private readonly RetryPolicy _retryPolicy;
+    private readonly CircuitBreaker _circuitBreaker;
+    private readonly ILoggerFactory _loggerFactory;
 
-    public static async Task<IEnumerable<T>> HandleCrudOperation<T>(
+    public HandleCrudFunctions(
+        ILogger<HandleCrudFunctions> logger,
+        IMetricsService metrics,
+        ILoggerFactory loggerFactory)
+    {
+        _logger = logger;
+        _metrics = metrics;
+        _loggerFactory = loggerFactory;
+        _retryPolicy = new RetryPolicy(logger);
+        _circuitBreaker = new CircuitBreaker(logger);
+    }
+
+    public async Task<IEnumerable<T>> HandleCrudOperation<T>(
         string operation,
         string entityType,
         string? filter = null,
         T? data = default,
         int? pageSize = null,
-        string? continuationToken = null) where T : class, new()
+        string? continuationToken = null) where T : class, ITableEntity, new()
     {
-        var (serviceName, storageType) = GetStorageServiceInfo(entityType);
-        var storageConnectionString = Environment.GetEnvironmentVariable("StorageConnectionString")
-            ?? throw new InvalidOperationException("Storage connection string not configured");
+        var operationName = $"{operation}_{typeof(T).Name}";
+        using var timer = new OperationTimer(operationName, _metrics);
 
-        if (storageType == Constants.Storage.StorageType.Table)
+        try
         {
-            if (!typeof(ITableEntity).IsAssignableFrom(typeof(T)))
+            return await _circuitBreaker.ExecuteAsync(async () =>
             {
-                throw new ArgumentException($"Type {typeof(T).Name} must implement ITableEntity for table storage operations");
-            }
+                return await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    var (serviceName, storageType) = GetStorageServiceInfo(entityType);
+                    var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+                        ?? throw new InvalidOperationException("AzureWebJobsStorage connection string not configured");
 
-            return await HandleTableStorageOperationWrapper<T>(operation, serviceName, storageConnectionString, data, filter, pageSize, continuationToken);
+                    IEnumerable<T> result;
+                    if (storageType == Constants.Storage.StorageType.Table)
+                    {
+                        if (!typeof(ITableEntity).IsAssignableFrom(typeof(T)))
+                        {
+                            throw new ArgumentException($"Type {typeof(T).Name} must implement ITableEntity for table storage operations");
+                        }
+
+                        // Safe to cast since we've verified T implements ITableEntity
+                        var tableResult = await HandleTableStorageOperation<ITableEntity>(
+                            operation, serviceName, storageConnectionString, data as ITableEntity, filter, pageSize, continuationToken);
+                        result = tableResult.Cast<T>();
+                    }
+                    else if (storageType == Constants.Storage.StorageType.Blob)
+                    {
+                        result = await HandleBlobStorageOperation<T>(
+                            operation, serviceName, storageConnectionString, data, filter);
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"Unsupported storage type {storageType} for entity type {typeof(T).Name}");
+                    }
+
+                    _metrics.IncrementCounter($"{operationName}_Success");
+                    _metrics.RecordValue($"{operationName}_ResultCount", result.Count());
+                    return result;
+                }, operationName);
+            }, operationName);
         }
-        else if (storageType == Constants.Storage.StorageType.Blob)
+        catch (Exception ex)
         {
-            return await HandleBlobStorageOperation<T>(operation, serviceName, storageConnectionString, data, filter);
+            _metrics.IncrementCounter($"{operationName}_Error");
+            _logger.LogError(ex, "Error in {Operation} for type {Type}: {Error}",
+                operation, typeof(T).Name, ex.Message);
+            throw;
         }
-        else
-        {
-            throw new ArgumentException($"Unsupported storage type {storageType} for entity type {typeof(T).Name}");
-        }
     }
 
-    private static async Task<IEnumerable<T>> HandleTableStorageOperationWrapper<T>(
-        string operation,
-        string tableName,
-        string connectionString,
-        T? data,
-        string? filter = null,
-        int? pageSize = null,
-        string? continuationToken = null) where T : class, new()
-    {
-        // Cast data to ITableEntity if possible
-        var entity = data as ITableEntity;
-        // Use reflection to invoke the generic method with the correct constraint
-        var method = typeof(HandleCrudFunctions)
-            .GetMethod(nameof(HandleTableStorageOperation), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
-            ?.MakeGenericMethod(typeof(T));
-        if (method == null)
-            throw new InvalidOperationException("Could not find HandleTableStorageOperation method.");
-
-        var task = (Task<IEnumerable<T>>)method.Invoke(null, new object?[] { operation, tableName, connectionString, entity, filter, pageSize, continuationToken })!;
-        return await task;
-    }
-
-    private static (string ServiceName, Constants.Storage.StorageType StorageType) GetStorageServiceInfo(string entityType)
-    {
-        if (!Constants.Storage.EntityStorageTypes.ContainsKey(entityType))
-            throw new ArgumentException($"Unknown entity type: {entityType}. Valid entity types are: {string.Join(", ", Constants.Storage.EntityStorageTypes.Keys)}");
-
-        var serviceName = GetStorageService.GetStorageServiceName(entityType);
-        var storageType = Constants.Storage.EntityStorageTypes[entityType];
-        return (serviceName, storageType);
-    }
-
-    private static async Task<IEnumerable<T>> HandleTableStorageOperation<T>(
+    private async Task<IEnumerable<T>> HandleTableStorageOperation<T>(
         string operation,
         string tableName,
         string connectionString,
@@ -83,107 +95,101 @@ public static class HandleCrudFunctions
         int? pageSize = null,
         string? continuationToken = null) where T : class, ITableEntity, new()
     {
-        var logger = LoggerFactory.CreateLogger<TableStorageService<T>>();
-        var tableService = new TableStorageService<T>(connectionString, tableName, logger);
+        var tableStorageLogger = _loggerFactory.CreateLogger<TableStorageService<T>>();
+        var tableStorage = new TableStorageService<T>(connectionString, tableName, tableStorageLogger, _metrics);
 
+        var results = new List<T>();
         switch (operation.ToLowerInvariant())
         {
             case Constants.Storage.Operations.Get when pageSize.HasValue:
-                var (items, token) = await tableService.GetPagedResultsAsync(pageSize.Value, continuationToken, filter);
-                return items;
+                var pagedResults = await tableStorage.GetPagedResultsAsync(pageSize.Value, continuationToken, filter);
+                results.AddRange(pagedResults.Items);
+                break;
 
             case Constants.Storage.Operations.Get:
-                return await tableService.GetAllAsync(filter);
+                var entities = await tableStorage.GetAllAsync(filter);
+                results.AddRange(entities);
+                break;
 
             case Constants.Storage.Operations.Set:
-                if (data == null) throw new ArgumentNullException(nameof(data));
-                await tableService.AddEntityAsync((T)data);
-                return new[] { (T)data };
+                if (data == null)
+                    throw new ArgumentNullException(nameof(data), "Data is required for Set operation");
+                var addedEntity = await tableStorage.AddEntityAsync(data as T 
+                    ?? throw new ArgumentException("Invalid entity type for table storage"));
+                results.Add(addedEntity);
+                break;
 
             case Constants.Storage.Operations.Update:
-                if (data == null) throw new ArgumentNullException(nameof(data));
-                await tableService.UpdateEntityAsync((T)data);
-                return new[] { (T)data };
+                if (data == null)
+                    throw new ArgumentNullException(nameof(data), "Data is required for Update operation");
+                await tableStorage.UpdateEntityAsync(data as T 
+                    ?? throw new ArgumentException("Invalid entity type for table storage"));
+                results.Add(data as T);
+                break;
 
             case Constants.Storage.Operations.Delete:
                 if (string.IsNullOrEmpty(filter))
-                    throw new ArgumentException("Filter required for delete operation", nameof(filter));
-                
-                var entities = await tableService.GetAllAsync(filter);
-                foreach (var entity in entities)
+                    throw new ArgumentException("Filter is required for Delete operation");
+                var entitiesToDelete = await tableStorage.GetAllAsync(filter);
+                foreach (var entity in entitiesToDelete)
                 {
-                    await tableService.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
+                    await tableStorage.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
                 }
-                return Array.Empty<T>();
+                break;
 
             default:
-                throw new ArgumentException($"Invalid operation: {operation}", nameof(operation));
+                throw new ArgumentException($"Unsupported operation: {operation}");
         }
+
+        return results;
     }
 
-    private static async Task<IEnumerable<T>> HandleBlobStorageOperation<T>(
-    string operation,
+    private async Task<IEnumerable<T>> HandleBlobStorageOperation<T>(
+        string operation,
         string containerName,
         string connectionString,
-        T? data = default,
-        string? blobName = null)
+        T? data,
+        string? blobName = null) where T : class
     {
-        var blobServiceClient = new BlobServiceClient(connectionString);
-        var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-        await containerClient.CreateIfNotExistsAsync();
+        var blobStorageLogger = _loggerFactory.CreateLogger<BlobStorageService<T>>();
+        var blobStorage = new BlobStorageService<T>(connectionString, containerName, blobStorageLogger, _metrics);
 
+        var results = new List<T>();
         switch (operation.ToLowerInvariant())
         {
             case Constants.Storage.Operations.Get when !string.IsNullOrEmpty(blobName):
-                var blobClient = containerClient.GetBlobClient(blobName);
-                if (!await blobClient.ExistsAsync())
-                    return Array.Empty<T>();
-
-                var download = await blobClient.DownloadContentAsync();
-                var content = download.Value.Content.ToString();
-                return new[] { JsonSerializer.Deserialize<T>(content)! };
+                var blob = await blobStorage.GetBlobAsync(blobName);
+                if (blob != null) results.Add(blob);
+                break;
 
             case Constants.Storage.Operations.Get:
-                var blobs = new List<T>();
-                await foreach (var blob in containerClient.GetBlobsAsync())
-                {
-                    var client = containerClient.GetBlobClient(blob.Name);
-                    var blobContent = await client.DownloadContentAsync();
-                    blobs.Add(JsonSerializer.Deserialize<T>(blobContent.Value.Content.ToString())!);
-                }
-                return blobs;
+                var blobs = await blobStorage.GetAllBlobsAsync();
+                results.AddRange(blobs);
+                break;
 
             case Constants.Storage.Operations.Set:
-                if (data == null) throw new ArgumentNullException(nameof(data));
-                if (string.IsNullOrEmpty(blobName)) throw new ArgumentException("Blob name required for set operation", nameof(blobName));
-
-                var setBlobClient = containerClient.GetBlobClient(blobName);
-                var json = JsonSerializer.Serialize(data);
-                await setBlobClient.UploadAsync(BinaryData.FromString(json), overwrite: true);
-                return new[] { data };
-
-            case Constants.Storage.Operations.Update:
-                if (data == null) throw new ArgumentNullException(nameof(data));
-                if (string.IsNullOrEmpty(blobName)) throw new ArgumentException("Blob name required for update operation", nameof(blobName));
-
-                var updateBlobClient = containerClient.GetBlobClient(blobName);
-                if (!await updateBlobClient.ExistsAsync())
-                    throw new InvalidOperationException($"Blob {blobName} does not exist");
-
-                var updateJson = JsonSerializer.Serialize(data);
-                await updateBlobClient.UploadAsync(BinaryData.FromString(updateJson), overwrite: true);
-                return new[] { data };
-
-            case Constants.Storage.Operations.Delete:
+                if (data == null)
+                    throw new ArgumentNullException(nameof(data), "Data is required for Set operation");
                 if (string.IsNullOrEmpty(blobName))
-                    throw new ArgumentException("Blob name required for delete operation", nameof(blobName));
-
-                var deleteBlobClient = containerClient.GetBlobClient(blobName);
-                await deleteBlobClient.DeleteIfExistsAsync();
-                return Array.Empty<T>();
+                    throw new ArgumentException("Blob name is required for Set operation");
+                var uploadedBlob = await blobStorage.UploadBlobAsync(blobName, data);
+                results.Add(uploadedBlob);
+                break;
 
             default:
-                throw new ArgumentException($"Invalid operation: {operation}", nameof(operation));
+                throw new ArgumentException($"Unsupported operation: {operation}");
         }
+
+        return results;
+    }
+
+    private static (string ServiceName, Constants.Storage.StorageType StorageType) GetStorageServiceInfo(string entityType)
+    {
+        if (!Constants.Storage.EntityStorageTypes.ContainsKey(entityType))
+        {
+            throw new ArgumentException($"Unknown entity type: {entityType}");
+        }
+
+        return (entityType, Constants.Storage.EntityStorageTypes[entityType]);
     }
 }
