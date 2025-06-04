@@ -73,14 +73,16 @@ public class HandleCrudFunctions
         ArgumentNullException.ThrowIfNull(options);
         var operationName = $"{operation}_{typeof(T).Name}";
         using var timer = new OperationTimer(operationName, _metrics);
+        
+        // Get storage info before the try block so we can use it in error logging
+        var (serviceName, storageType) = GetStorageServiceInfo(entityType);
 
         try
         {
-            var (serviceName, storageType) = GetStorageServiceInfo(entityType);
             
             _logger.LogInformation(
-                "Starting {Operation} operation for {EntityType} using {StorageType}", 
-                operation, entityType, storageType);
+                "Starting {Operation} operation for {TableName} using {StorageType}", 
+                operation, serviceName, storageType);
 
             var result = storageType switch
             {
@@ -111,10 +113,10 @@ public class HandleCrudFunctions
         catch (Exception ex)
         {
             _metrics.IncrementCounter($"{operationName}_Error");
-            _logger.LogError(ex, "Error in {Operation} for {EntityType}: {Error}", 
-                operation, entityType, ex.Message);
+            _logger.LogError(ex, "Error in {Operation} for table {TableName}: {Error}", 
+                operation, serviceName, ex.Message);
             throw new CrudOperationException(
-                $"Failed to perform {operation} on {entityType}", ex);
+                $"Failed to perform {operation} on {serviceName}", ex);
         }
     }
 
@@ -246,17 +248,16 @@ public class HandleCrudFunctions
     private static (string ServiceName, Constants.Storage.StorageType StorageType) 
         GetStorageServiceInfo(string tableName)
     {
-        // For the storage type, we still need to map from the base entity type
-        var baseEntityType = tableName.ToLowerInvariant().StartsWith("mock") 
-            ? tableName[4..] // Skip "mock" prefix
-            : tableName;
+        // Use Constants to look up the storage type
+        var storageTypeKey = Constants.Storage.EntityTypes.Blog; // Default to blog type
 
-        if (!Constants.Storage.EntityStorageTypes.ContainsKey(baseEntityType))
+        // Get the storage type from our constants
+        if (!Constants.Storage.EntityStorageTypes.TryGetValue(storageTypeKey, out var storageType))
         {
-            throw new ArgumentException($"Unknown entity type derived from table name: {baseEntityType}");
+            throw new ArgumentException($"Unknown entity type: {storageTypeKey}");
         }
 
-        // Return the original table name but get the storage type from the base entity type
-        return (tableName, Constants.Storage.EntityStorageTypes[baseEntityType]);
+        // Return the original table name unchanged and just the storage type
+        return (tableName, storageType);
     }
 }

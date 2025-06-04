@@ -17,11 +17,7 @@ public static class GetStorageService
             throw new ArgumentException($"Unknown entity type: {storageService}. Valid types are: {validTypes}");
         }
 
-        return storageType switch
-        {
-            Constants.Storage.StorageType.Table => storageService,  // Table name is same as service name
-            Constants.Storage.StorageType.Blob => storageService,   // Container name is same as service name
-            _ => throw new ArgumentException($"Unsupported storage type: {storageType}")
-        };
+        // Just return the service name as-is - any transformations should happen in Program.cs
+        return storageService;
     }
 }

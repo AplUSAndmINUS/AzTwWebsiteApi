@@ -28,6 +28,8 @@ public class BlogPostFunctions
         
         _connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
             ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
+        
+        // Get the already-transformed table name from the environment
         _blogPostsTableName = Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog";
         
         _logger.LogInformation("BlogPostFunctions initialized with settings:");
@@ -61,7 +63,7 @@ public class BlogPostFunctions
             // Call HandleCrudOperation with transformed table name
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.GetPaged,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 options: options);
 
             _metrics.IncrementCounter($"{operation}_Success");
@@ -99,7 +101,7 @@ public class BlogPostFunctions
 
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 options: options);
 
             if (!result.Items.Any())
@@ -135,7 +137,7 @@ public class BlogPostFunctions
             // Ensure required Table Storage properties are set
             blogPost.PartitionKey = blogPost.Id;
             blogPost.RowKey = blogPost.Id;
-            blogPost.Status = Constants.Blog.Status.Draft;
+            blogPost.Status = Constants.Blog.Status.Published; // Default to Published status
 
             var options = new CrudOperationOptions
             {
@@ -145,7 +147,7 @@ public class BlogPostFunctions
 
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Set,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 options: options);
 
             var response = req.CreateResponse(HttpStatusCode.Created);
@@ -187,7 +189,7 @@ public class BlogPostFunctions
 
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Update,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 options: options);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
@@ -222,7 +224,7 @@ public class BlogPostFunctions
 
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Delete,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 options: options);
 
             var response = req.CreateResponse(HttpStatusCode.NoContent);

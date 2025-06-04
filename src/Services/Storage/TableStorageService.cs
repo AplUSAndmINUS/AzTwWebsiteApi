@@ -26,6 +26,7 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         
         try
         {
+            // Log exactly what we receive - no transformations
             _logger.LogInformation("Initializing TableClient for table: {TableName}", tableName);
             _tableClient = new TableClient(connectionString, tableName);
             _logger.LogInformation("Creating table if not exists: {TableName}", tableName);
