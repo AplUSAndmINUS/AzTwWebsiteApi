@@ -31,7 +31,7 @@ namespace AzTwWebsiteApi.Services.Utils
                 public const string Contact = "contact";
                 public const string Events = "events";
                 public const string GitHub = "github";
-                public const string LiveStreamsTable = "livestreams";
+                public const string LiveStreams = "livestreams";
                 public const string Music = "music";
                 public const string Portfolio = "portfolio";
                 public const string PortfolioComments = "portfoliocomments";
@@ -42,7 +42,7 @@ namespace AzTwWebsiteApi.Services.Utils
                 public const string BlogImages = "blog-images";
                 public const string BooksImages = "books-images";
                 public const string EventsData = "events-data";
-                public const string LiveStreamsBlob = "livestreams";
+                public const string LiveStreamsBlob = "livestreams-data";
                 public const string PortfolioImages = "portfolio-images";
                 public const string Video = "video";
             }
@@ -66,7 +66,7 @@ namespace AzTwWebsiteApi.Services.Utils
                 { EntityTypes.Contact, StorageType.Table },
                 { EntityTypes.Events, StorageType.Table },
                 { EntityTypes.GitHub, StorageType.Table },
-                { EntityTypes.LiveStreamsTable, StorageType.Table },
+                { EntityTypes.LiveStreams, StorageType.Table },
                 { EntityTypes.Music, StorageType.Table },
                 { EntityTypes.Portfolio, StorageType.Table },
                 { EntityTypes.PortfolioComments, StorageType.Table },
