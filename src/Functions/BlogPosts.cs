@@ -143,13 +143,59 @@ public class BlogPostFunctions
 
         try
         {
-            var blogPost = await JsonSerializer.DeserializeAsync<BlogPost>(req.Body);
-            if (blogPost == null) throw new ArgumentNullException(nameof(blogPost));
+            // First deserialize to a dynamic object to handle the incoming format
+            using var jsonDoc = await JsonDocument.ParseAsync(req.Body);
+            var element = jsonDoc.RootElement;
+
+            string TryGetPropertyCaseInsensitive(JsonElement element, string propertyName)
+            {
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return property.Value.GetString() ?? string.Empty;
+                    }
+                }
+                return string.Empty;
+            }
+
+            DateTime? TryGetDateTimeCaseInsensitive(JsonElement element, string propertyName)
+            {
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            return property.Value.GetDateTime();
+                        }
+                        catch
+                        {
+                            return null;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            var blogPost = new BlogPost
+            {
+                Id = TryGetPropertyCaseInsensitive(element, "id") ?? Guid.NewGuid().ToString(),
+                Title = TryGetPropertyCaseInsensitive(element, "title"),
+                Content = TryGetPropertyCaseInsensitive(element, "content"),
+                AuthorId = TryGetPropertyCaseInsensitive(element, "author"),
+                Status = TryGetPropertyCaseInsensitive(element, "status") ?? Constants.Blog.Status.Draft,
+                PublishDate = TryGetDateTimeCaseInsensitive(element, "publisheddate") ?? DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
 
             // Ensure required Table Storage properties are set
             blogPost.PartitionKey = blogPost.Id;
             blogPost.RowKey = blogPost.Id;
-            blogPost.Status = Constants.Blog.Status.Published; // Default to Published status
+
+            _logger.LogInformation(
+                "Creating blog post: Id={Id}, Title={Title}, Author={Author}, Status={Status}", 
+                blogPost.Id, blogPost.Title, blogPost.AuthorId, blogPost.Status);
 
             var options = new CrudOperationOptions
             {
@@ -164,6 +210,14 @@ public class BlogPostFunctions
 
             var response = req.CreateResponse(HttpStatusCode.Created);
             await response.WriteAsJsonAsync(result.Items.First());
+            return response;
+        }
+        catch (JsonException ex)
+        {
+            _metrics.IncrementCounter($"{operation}_Error");
+            _logger.LogError(ex, "Invalid JSON format: {Error}", ex.Message);
+            var response = req.CreateResponse(HttpStatusCode.BadRequest);
+            await response.WriteAsJsonAsync(new { error = "Invalid JSON format", details = ex.Message });
             return response;
         }
         catch (Exception ex)
