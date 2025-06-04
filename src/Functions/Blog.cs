@@ -1,10 +1,18 @@
 // C# app- GetBlogPostsFunction.cs
+// Description: This file contains the Azure Functions for managing blog posts, comments, and images.
+
 // Endpoints: 
 // GetAllBlogPosts: api/blog/posts
 // GetBlogPostById: api/blog/posts/{id}
 // CreateBlogPost: api/blog/posts
 // UpdateBlogPost: api/blog/posts/{id}
 // DeleteBlogPost: api/blog/posts/{id}
+// GetBlogCommentsByPostId: api/blog/posts/{postId}/comments
+// AddBlogComment: api/blog/posts/{postId}/comments
+// UpdateBlogComment: api/blog/posts/{postId}/comments/{commentId}
+// DeleteBlogComment: api/blog/posts/{postId}/comments/{commentId}
+// GetBlogImageById: api/blog/images/{id}
+// UploadBlogImage: api/blog/images
 
 using System.Net;
 using System.Text.Json;
@@ -12,6 +20,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Models.Blog;
+using AzTwWebsiteApi.Services.Storage;
 using AzTwWebsiteApi.Services.Utils;
 
 namespace AzTwWebsiteApi.Functions;
@@ -19,10 +28,17 @@ namespace AzTwWebsiteApi.Functions;
 public class BlogFunctions
 {
     private readonly ILogger<BlogFunctions> _logger;
+    private readonly string _blogPostsTableName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog");
+    private readonly string _blogCommentsTableName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogCommentsTableName") ?? "mockblogcomments");
+    private readonly string _blogImagesBlobName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mockblogimages");
 
     public BlogFunctions(ILogger<BlogFunctions> logger)
     {
         _logger = logger;
+        _logger.LogInformation("BlogFunctions initialized with settings:");
+        _logger.LogInformation("Using blog comments table name: {TableName}", _blogCommentsTableName);
+        _logger.LogInformation("Using blog posts table name: {TableName}", _blogPostsTableName);
+        _logger.LogInformation("Using blog images blob name: {BlobName}", _blogImagesBlobName);
     }
 
     // Get all blog posts
@@ -39,10 +55,10 @@ public class BlogFunctions
             int pageSize = int.TryParse(query["pageSize"], out var size) ? size : 25;
             string? continuationToken = query["continuationToken"];
 
-            // Call HandleCrudOperation
+            // Call HandleCrudOperation with transformed table name
             var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 pageSize: pageSize,
                 continuationToken: continuationToken);
 
@@ -69,7 +85,7 @@ public class BlogFunctions
         {
             var result = await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             if (!result.Any())
@@ -106,7 +122,7 @@ public class BlogFunctions
 
             var result = await HandleCrudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Set,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 data: blogPost);
 
             var response = req.CreateResponse(HttpStatusCode.Created);
@@ -139,7 +155,7 @@ public class BlogFunctions
 
             var result = await HandleCrudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Update,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 data: blogPost);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
@@ -165,7 +181,7 @@ public class BlogFunctions
         {
             await HandleCrudFunctions.HandleCrudOperation<BlogPost>(
                 operation: Constants.Storage.Operations.Delete,
-                entityType: Constants.Storage.EntityTypes.Blog,
+                entityType: _blogPostsTableName,
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             return req.CreateResponse(HttpStatusCode.NoContent);
@@ -193,5 +209,161 @@ public class BlogFunctions
         var response = req.CreateResponse(HttpStatusCode.NotFound);
         await response.WriteAsJsonAsync(new { message });
         return response;
+    }
+
+    [Function("GetBlogCommentsByPostId")]
+    public async Task<HttpResponseData> GetBlogCommentsByPostId(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/posts/{postId}/comments")] HttpRequestData req,
+        string postId)
+    {
+        _logger.LogInformation("Function Start: {Module} - GetBlogCommentsByPostId. PostId: {PostId}", Constants.Modules.Blog, postId);
+        try
+        {
+            var comments = await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+                operation: Constants.Storage.Operations.Get,
+                entityType: _blogPostsTableName,
+                filter: $"PartitionKey eq '{postId}'");
+
+            if (!comments.Any())
+            {
+                return await CreateNotFoundResponse(req, "No comments found for this blog post");
+            }
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(comments);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting comments for blog post {PostId}: {Error}", postId, ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
+    }
+
+    [Function("AddBlogComment")]
+    public async Task<HttpResponseData> AddBlogComment(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts/{postId}/comments")] HttpRequestData req,
+        string postId)
+    {
+        _logger.LogInformation("Function Start: {Module} - AddBlogComment. PostId: {PostId}", Constants.Modules.Blog, postId);
+
+        try
+        {
+            var comment = await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+                operation: Constants.Storage.Operations.Create,
+                entityType: _blogCommentsTableName,
+                data: req.Body);
+
+            var response = req.CreateResponse(HttpStatusCode.Created);
+            await response.WriteAsJsonAsync(comment);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding comment to blog post {PostId}: {Error}", postId, ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
+    }
+
+    [Function("UpdateBlogComment")]
+    public async Task<HttpResponseData> UpdateBlogComment(
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "blog/posts/{postId}/comments/{commentId}")] HttpRequestData req,
+        string postId, string commentId)
+    {
+        _logger.LogInformation("Function Start: {Module} - UpdateBlogComment. PostId: {PostId}, CommentId: {CommentId}", Constants.Modules.Blog, postId, commentId);
+        try
+        {
+            var comment = await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+                operation: Constants.Storage.Operations.Update,
+                entityType: _blogCommentsTableName,
+                data: req.Body);
+
+            if (comment == null) return await CreateNotFoundResponse(req, "Comment not found");
+
+            comment.PartitionKey = postId;
+            comment.RowKey = commentId;
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(comment);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating comment {CommentId} for blog post {PostId}: {Error}", commentId, postId, ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
+    }
+
+    [Function("DeleteBlogComment")]
+    public async Task<HttpResponseData> DeleteBlogComment(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "blog/posts/{postId}/comments/{commentId}")] HttpRequestData req,
+        string postId, string commentId)
+    {
+        _logger.LogInformation("Function Start: {Module} - DeleteBlogComment. PostId: {PostId}, CommentId: {CommentId}", Constants.Modules.Blog, postId, commentId);
+        try
+        {
+            await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+                operation: Constants.Storage.Operations.Delete,
+                entityType: _blogCommentsTableName,
+                filter: $"PartitionKey eq '{postId}' and RowKey eq '{commentId}'");
+
+            return req.CreateResponse(HttpStatusCode.NoContent);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting comment {CommentId} for blog post {PostId}: {Error}", commentId, postId, ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
+    }
+
+    [Function("GetBlogImageById")]
+    public async Task<HttpResponseData> GetBlogImageById(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "blog/images/{id}")] HttpRequestData req,
+        string id)
+    {
+        _logger.LogInformation("Function Start: {Module} - GetBlogImageById. Id: {Id}", Constants.Modules.Blog, id);
+
+        try
+        {
+            var image = await HandleCrudFunctions.HandleCrudOperation<BlogImage>(
+                operation: Constants.Storage.Operations.Get,
+                entityType: _blogImagesBlobName,
+                filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
+
+            if (image == null) return await CreateNotFoundResponse(req, "Blog image not found");
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(image);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting blog image {Id}: {Error}", id, ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
+    }
+
+    [Function("UploadBlogImage")]
+    public async Task<HttpResponseData> UploadBlogImage(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/images")] HttpRequestData req)
+    {
+        _logger.LogInformation("Function Start: {Module} - UploadBlogImage", Constants.Modules.Blog);
+
+        try
+        {
+            var image = await HandleCrudFunctions.HandleCrudOperation<BlogImage>(
+                operation: Constants.Storage.Operations.Create,
+                entityType: _blogImagesBlobName,
+                data: req.Body);
+
+            var response = req.CreateResponse(HttpStatusCode.Created);
+            await response.WriteAsJsonAsync(image);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading blog image: {Error}", ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
     }
 }
