@@ -47,18 +47,23 @@ public class BlogPostFunctions
 
         try
         {
-            // Parse query parameters for paging
+            // Parse query parameters for paging and filtering
             var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
             int pageSize = int.TryParse(query["pageSize"], out var size) ? size : 25;
             string? continuationToken = query["continuationToken"];
+            string? status = query["status"];
 
             var options = new CrudOperationOptions
             {
                 ConnectionString = _connectionString,
                 PageSize = pageSize,
                 ContinuationToken = continuationToken,
-                Filter = $"Status eq '{Constants.Blog.Status.Published}'"
+                Filter = !string.IsNullOrEmpty(status) ? $"Status eq '{status}'" : null // Only filter by status if provided
             };
+
+            // Log the query details for debugging
+            _logger.LogInformation("Querying blog posts with settings: TableName={TableName}, PageSize={PageSize}, Filter={Filter}", 
+                _blogPostsTableName, pageSize, options.Filter ?? "No filter");
 
             // Call HandleCrudOperation with transformed table name
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
@@ -68,6 +73,13 @@ public class BlogPostFunctions
 
             _metrics.IncrementCounter($"{operation}_Success");
             _metrics.RecordValue($"{operation}_ResultCount", result.Items.Count);
+
+            _logger.LogInformation("Found {Count} blog posts", result.Items.Count);
+            if (result.Items.Count > 0)
+            {
+                _logger.LogInformation("First blog post: Id={Id}, Title={Title}, Status={Status}", 
+                    result.Items[0].Id, result.Items[0].Title, result.Items[0].Status);
+            }
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(result);
