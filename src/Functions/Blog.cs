@@ -1,16 +1,23 @@
 // C# app- GetBlogPostsFunction.cs
-// Description: This file contains the Azure Functions for managing blog posts, comments, and images.
+// Description: This file contains the Azure Functions for managing 
+// blog posts, comments, and images. Endpoints listed below due to page brevity.
 
-// Endpoints: 
+/** Endpoints: **/
+
+/** BlogPosts: **/
 // GetAllBlogPosts: api/blog/posts
 // GetBlogPostById: api/blog/posts/{id}
 // CreateBlogPost: api/blog/posts
 // UpdateBlogPost: api/blog/posts/{id}
 // DeleteBlogPost: api/blog/posts/{id}
+
+/** BlogComments: **/
 // GetBlogCommentsByPostId: api/blog/posts/{postId}/comments
 // AddBlogComment: api/blog/posts/{postId}/comments
 // UpdateBlogComment: api/blog/posts/{postId}/comments/{commentId}
 // DeleteBlogComment: api/blog/posts/{postId}/comments/{commentId}
+
+/** BlogImages: **/
 // GetBlogImageById: api/blog/images/{id}
 // UploadBlogImage: api/blog/images
 
@@ -30,7 +37,7 @@ public class BlogFunctions
     private readonly ILogger<BlogFunctions> _logger;
     private readonly string _blogPostsTableName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog");
     private readonly string _blogCommentsTableName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogCommentsTableName") ?? "mockblogcomments");
-    private readonly string _blogImagesBlobName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mockblogimages");
+    private readonly string _blogImagesContainerName = StorageSettings.TransformMockName(Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mock-blog-images");
 
     public BlogFunctions(ILogger<BlogFunctions> logger)
     {
@@ -38,7 +45,7 @@ public class BlogFunctions
         _logger.LogInformation("BlogFunctions initialized with settings:");
         _logger.LogInformation("Using blog comments table name: {TableName}", _blogCommentsTableName);
         _logger.LogInformation("Using blog posts table name: {TableName}", _blogPostsTableName);
-        _logger.LogInformation("Using blog images blob name: {BlobName}", _blogImagesBlobName);
+        _logger.LogInformation("Using blog images container name: {ContainerName}", _blogImagesContainerName);
     }
 
     // Get all blog posts
@@ -249,13 +256,20 @@ public class BlogFunctions
 
         try
         {
-            var comment = await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
-                operation: Constants.Storage.Operations.Create,
+            var blogComment = await JsonSerializer.DeserializeAsync<BlogComment>(req.Body);
+            if (blogComment == null) throw new ArgumentNullException(nameof(blogComment));
+
+            // Ensure required Table Storage properties are set
+            blogComment.PartitionKey = postId;
+            blogComment.RowKey = blogComment.Id;
+
+            var comment = await HandleCrudFunctions.HandleCrudOperation(
+                operation: Constants.Storage.Operations.Set,
                 entityType: _blogCommentsTableName,
-                data: req.Body);
+                data: blogComment);
 
             var response = req.CreateResponse(HttpStatusCode.Created);
-            await response.WriteAsJsonAsync(comment);
+            await response.WriteAsJsonAsync(comment.First());
             return response;
         }
         catch (Exception ex)
@@ -273,18 +287,19 @@ public class BlogFunctions
         _logger.LogInformation("Function Start: {Module} - UpdateBlogComment. PostId: {PostId}, CommentId: {CommentId}", Constants.Modules.Blog, postId, commentId);
         try
         {
-            var comment = await HandleCrudFunctions.HandleCrudOperation<BlogComment>(
+            var blogComment = await JsonSerializer.DeserializeAsync<BlogComment>(req.Body);
+            if (blogComment == null) return await CreateNotFoundResponse(req, "Comment not found");
+
+            blogComment.PartitionKey = postId;
+            blogComment.RowKey = commentId;
+
+            var comment = await HandleCrudFunctions.HandleCrudOperation(
                 operation: Constants.Storage.Operations.Update,
                 entityType: _blogCommentsTableName,
-                data: req.Body);
-
-            if (comment == null) return await CreateNotFoundResponse(req, "Comment not found");
-
-            comment.PartitionKey = postId;
-            comment.RowKey = commentId;
+                data: blogComment);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(comment);
+            await response.WriteAsJsonAsync(comment.First());
             return response;
         }
         catch (Exception ex)
@@ -327,7 +342,7 @@ public class BlogFunctions
         {
             var image = await HandleCrudFunctions.HandleCrudOperation<BlogImage>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: _blogImagesBlobName,
+                entityType: _blogImagesContainerName,
                 filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
 
             if (image == null) return await CreateNotFoundResponse(req, "Blog image not found");
@@ -351,10 +366,13 @@ public class BlogFunctions
 
         try
         {
-            var image = await HandleCrudFunctions.HandleCrudOperation<BlogImage>(
-                operation: Constants.Storage.Operations.Create,
-                entityType: _blogImagesBlobName,
-                data: req.Body);
+            var blogImage = await JsonSerializer.DeserializeAsync<BlogImage>(req.Body);
+            if (blogImage == null) throw new ArgumentNullException(nameof(blogImage));
+
+            var image = await HandleCrudFunctions.HandleCrudOperation(
+                operation: Constants.Storage.Operations.Set,
+                entityType: _blogImagesContainerName,
+                data: blogImage);
 
             var response = req.CreateResponse(HttpStatusCode.Created);
             await response.WriteAsJsonAsync(image);
