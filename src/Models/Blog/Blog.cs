@@ -14,6 +14,10 @@ namespace AzTwWebsiteApi.Models.Blog
         public string ImageUrl { get; set; } = string.Empty; // Reference to Blob Storage
         public string AuthorId { get; set; } = string.Empty;
         public string Tags { get; set; } = string.Empty;
+        public DateTime PublishDate { get; set; } = DateTime.UtcNow;
+        public DateTime LastModified { get; set; } = DateTime.UtcNow;
+        public string Status { get; set; } = "Draft"; // Draft, Published, Archived
+        public bool IsPublished => Status == "Published";
         public ETag ETag { get; set; }
 
         public BlogPost()
@@ -48,19 +52,25 @@ namespace AzTwWebsiteApi.Models.Blog
     }
 
 
-    public class BlogImage
+    public class BlogImage : ITableEntity
     {
-        public string BlogImageId { get; set; } = string.Empty; // Unique identifier for the image
-        public string BlogPostId { get; set; } = string.Empty; // Image identified with the blog post
-        public string PartitionKey => "BlogImage";
-        public string RowKey => BlogImageId;
-        public string BlobName { get; set; } = string.Empty; // Name of the blob in storage
-        public string Url { get; set; } = string.Empty; // URL to access the image
-        public DateTimeOffset CreatedAt { get; set; }
-        public DateTimeOffset LastModified { get; set; }
+        public string BlogImageId { get; set; } = Guid.NewGuid().ToString();
+        public string BlogPostId { get; set; } = string.Empty;
+        public string PartitionKey { get; set; }
+        public string RowKey { get; set; }
+        public DateTimeOffset? Timestamp { get; set; }
+        public string BlobName { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public string MimeType { get; set; } = string.Empty;
+        public long FileSize { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public ETag ETag { get; set; }
 
-        // Add a public parameterless constructor
-        public BlogImage() { }
+        public BlogImage()
+        {
+            PartitionKey = "BlogImage";
+            RowKey = BlogImageId;
+        }
     }
 
   public class BlogImageMetadata : ITableEntity

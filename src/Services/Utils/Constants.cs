@@ -2,6 +2,29 @@ namespace AzTwWebsiteApi.Services.Utils
 {
     public static class Constants
     {
+        public static class Blog
+        {
+            public static class Status
+            {
+                public const string Draft = "Draft";
+                public const string Published = "Published";
+                public const string Archived = "Archived";
+            }
+
+            public static class ImageTypes
+            {
+                public static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+                public static readonly string[] AllowedMimeTypes = 
+                { 
+                    "image/jpeg",
+                    "image/png",
+                    "image/gif",
+                    "image/webp"
+                };
+                public const int MaxFileSizeInMb = 5;
+            }
+        }
+
         public static class Modules
         {
             public const string Blog = "Blog";
