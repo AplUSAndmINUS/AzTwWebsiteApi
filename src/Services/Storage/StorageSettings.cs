@@ -8,10 +8,19 @@ namespace AzTwWebsiteApi.Services.Storage
 
         public static string TransformMockName(string name)
         {
-            if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production")
+            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")?.ToLowerInvariant();
+            
+            // Only remove "mock" prefix in production
+            if (environment == "production" || environment == "prod")
             {
-                return name.Replace("MOCK_", "").Replace("_", "");
+                return name.StartsWith("mock", StringComparison.OrdinalIgnoreCase) 
+                    ? name[4..]
+                    : name.StartsWith("mock-", StringComparison.OrdinalIgnoreCase) || name.StartsWith("mock_", StringComparison.OrdinalIgnoreCase)
+                    ? name[5..] 
+                    : name;
             }
+            
+            // For dev/test environments, keep the original name with "mock" or "mock-" prefix
             return name;
         }
     }

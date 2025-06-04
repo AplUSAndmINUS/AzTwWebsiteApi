@@ -51,13 +51,16 @@ namespace AzTwWebsiteApi.Models.Blog
     public class BlogImage
     {
         public string BlogImageId { get; set; } = string.Empty; // Unique identifier for the image
-        public required string BlogPostId { get; set; } // Image identified with the blog post
-        public string PartitionKey => "BlogImage"; // In BlogComment to optimize queries
-        public string RowKey => BlogImageId; // Unique identifier for the image
-        public required string BlobName { get; set; } // Name of the blob in storage
-        public required string Url { get; set; } // URL to access the image
-        public required DateTimeOffset CreatedAt { get; set; }
-        public required DateTimeOffset LastModified { get; set; }
+        public string BlogPostId { get; set; } = string.Empty; // Image identified with the blog post
+        public string PartitionKey => "BlogImage";
+        public string RowKey => BlogImageId;
+        public string BlobName { get; set; } = string.Empty; // Name of the blob in storage
+        public string Url { get; set; } = string.Empty; // URL to access the image
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset LastModified { get; set; }
+
+        // Add a public parameterless constructor
+        public BlogImage() { }
     }
 
   public class BlogImageMetadata : ITableEntity
