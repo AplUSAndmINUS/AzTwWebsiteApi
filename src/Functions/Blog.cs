@@ -357,10 +357,12 @@ public class BlogFunctions
 
         try
         {
-            var image = await _crudFunctions.HandleCrudOperation<BlogImage>(
+            var images = await _crudFunctions.HandleBlobOperation<BlogImage>(
                 operation: Constants.Storage.Operations.Get,
-                entityType: _blogImagesContainerName,
-                filter: $"PartitionKey eq '{id}' and RowKey eq '{id}'");
+                entityType: Constants.Storage.EntityTypes.BlogImages,
+                blobName: id);
+                
+            var image = images.FirstOrDefault();
 
             if (image == null) return await CreateNotFoundResponse(req, "Blog image not found");
 
@@ -386,14 +388,69 @@ public class BlogFunctions
             var blogImage = await JsonSerializer.DeserializeAsync<BlogImage>(req.Body);
             if (blogImage == null) throw new ArgumentNullException(nameof(blogImage));
 
-            var image = await _crudFunctions.HandleCrudOperation(
-                operation: Constants.Storage.Operations.Set,
-                entityType: _blogImagesContainerName,
-                data: blogImage);
+            // Ensure required fields are set
+            if (string.IsNullOrEmpty(blogImage.BlogImageId))
+            {
+                blogImage.BlogImageId = Guid.NewGuid().ToString();
+            }
 
-            var response = req.CreateResponse(HttpStatusCode.Created);
-            await response.WriteAsJsonAsync(image);
+            // Set timestamps
+            var now = DateTimeOffset.UtcNow;
+            blogImage.CreatedAt = now;
+            blogImage.LastModified = now;
+
+            HttpResponseData response;
+
+            try
+            {
+                // Store the image in blob storage
+                var savedImage = await _crudFunctions.HandleBlobOperation<BlogImage>(
+                    operation: Constants.Storage.Operations.Set,
+                    entityType: Constants.Storage.EntityTypes.BlogImages,
+                    data: blogImage,
+                    blobName: blogImage.BlogImageId);
+
+                // If the URL is provided, try to store metadata
+                if (!string.IsNullOrEmpty(blogImage.Url))
+                {
+                    try
+                    {
+                        var metadata = new BlogImageMetadata
+                        {
+                            BlogImageMetadataId = Guid.NewGuid().ToString(),
+                            BlogImageId = blogImage.BlogImageId,
+                            BlobName = blogImage.BlobName,
+                            ImageUrl = blogImage.Url,
+                            Title = blogImage.BlogImageId, // Default to ID if no title provided
+                            AltText = string.Empty,
+                            Description = string.Empty
+                        };
+
+                        // Store metadata in table storage
+                        await _crudFunctions.HandleCrudOperation<BlogImageMetadata>(
+                            operation: Constants.Storage.Operations.Set,
+                            entityType: Constants.Storage.EntityTypes.BlogImageMetadata,
+                            data: metadata);
+                    }
+                    catch (Exception metadataEx)
+                    {
+                        // Log but don't fail the whole operation
+                        _logger.LogWarning(metadataEx, "Failed to store blog image metadata: {Error}", metadataEx.Message);
+                    }
+                }
+
+                response = req.CreateResponse(HttpStatusCode.Created);
+                await response.WriteAsJsonAsync(savedImage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading blog image: {Error}", ex.Message);
+                return await CreateErrorResponse(req, ex);
+            }
+
             return response;
+
+
         }
         catch (Exception ex)
         {

@@ -27,6 +27,7 @@ namespace AzTwWebsiteApi.Services.Utils
                 public const string Artwork = "artwork";
                 public const string Blog = "blog";
                 public const string BlogComments = "blogcomments";
+                public const string BlogImageMetadata = "blogimagemetadata";
                 public const string Books = "books";
                 public const string Contact = "contact";
                 public const string Events = "events";
@@ -35,6 +36,7 @@ namespace AzTwWebsiteApi.Services.Utils
                 public const string Music = "music";
                 public const string Portfolio = "portfolio";
                 public const string PortfolioComments = "portfoliocomments";
+                public const string PortfolioImageMetadata = "portfolioimagemetadata";
                 public const string VideoMetadata = "videometadata";
 
                 // Blob Storage entities

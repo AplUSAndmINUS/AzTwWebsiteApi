@@ -111,7 +111,7 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
     public async Task<T> AddEntityAsync(T entity)
     {
         var operation = $"AddEntity_{typeof(T).Name}";
-        using var timer = new OperationTimer(operation, _metrics);
+        using var timer = _metrics != null ? new OperationTimer(operation, _metrics) : null;
 
         return await _circuitBreaker.ExecuteAsync(async () =>
         {
@@ -137,17 +137,18 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
     public async Task UpdateEntityAsync(T entity)
     {
         var operation = $"UpdateEntity_{typeof(T).Name}";
-        using var timer = new OperationTimer(operation, _metrics);
+        using var timer = _metrics != null ? new OperationTimer(operation, _metrics) : null;
 
-        await _circuitBreaker.ExecuteAsync(async () =>
+        await _circuitBreaker.ExecuteAsync<object>(async () =>
         {
-            await _retryPolicy.ExecuteAsync(async () =>
+            await _retryPolicy.ExecuteAsync<object>(async () =>
             {
                 try
                 {
                     await _tableClient.UpdateEntityAsync(entity, ETag.All, TableUpdateMode.Replace);
                     _logger.LogInformation("Entity updated: {Entity}", entity);
                     _metrics?.IncrementCounter($"{operation}_Success");
+                    return null!;
                 }
                 catch (Exception ex)
                 {
@@ -156,17 +157,18 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
                     throw;
                 }
             }, operation);
+            return null!;
         }, operation);
     }
 
     public async Task DeleteEntityAsync(string partitionKey, string rowKey)
     {
         var operation = $"DeleteEntity_{typeof(T).Name}";
-        using var timer = new OperationTimer(operation, _metrics);
+        using var timer = _metrics != null ? new OperationTimer(operation, _metrics) : null;
 
-        await _circuitBreaker.ExecuteAsync(async () =>
+        await _circuitBreaker.ExecuteAsync<object>(async () =>
         {
-            await _retryPolicy.ExecuteAsync(async () =>
+            await _retryPolicy.ExecuteAsync<object>(async () =>
             {
                 try
                 {
@@ -174,12 +176,14 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
                     _logger.LogInformation("Entity deleted: PartitionKey={PartitionKey}, RowKey={RowKey}", 
                         partitionKey, rowKey);
                     _metrics?.IncrementCounter($"{operation}_Success");
+                    return null!;
                 }
                 catch (RequestFailedException ex) when (ex.Status == 404)
                 {
                     _logger.LogInformation("Entity to delete not found: PartitionKey={PartitionKey}, RowKey={RowKey}", 
                         partitionKey, rowKey);
                     _metrics?.IncrementCounter($"{operation}_NotFound");
+                    return null!;
                 }
                 catch (Exception ex)
                 {
@@ -189,6 +193,7 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
                     throw;
                 }
             }, operation);
+            return null!;
         }, operation);
     }
 
@@ -198,7 +203,7 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
         string? filter = null)
     {
         var operation = $"GetPagedResults_{typeof(T).Name}";
-        using var timer = new OperationTimer(operation, _metrics);
+        using var timer = _metrics != null ? new OperationTimer(operation, _metrics) : null;
 
         return await _circuitBreaker.ExecuteAsync(async () =>
         {
@@ -218,13 +223,13 @@ public class TableStorageService<T> : ITableStorageService<T> where T : class, I
                         {
                             _logger.LogInformation("Paged results retrieved. Count: {Count}, ContinuationToken: {ContinuationToken}", 
                                 results.Count, page.ContinuationToken);
-                            _metrics?.IncrementCounter($"{operation}_Success", results.Count);
+                            _metrics?.IncrementCounter($"{operation}_Success");
                             return (results, page.ContinuationToken);
                         }
                     }
 
                     _logger.LogInformation("All results retrieved. Total count: {Count}", results.Count);
-                    _metrics?.IncrementCounter($"{operation}_Success", results.Count);
+                    _metrics?.IncrementCounter($"{operation}_Success");
                     return (results, null);
                 }
                 catch (Exception ex)

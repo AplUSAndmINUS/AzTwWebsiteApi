@@ -57,9 +57,9 @@ public class HandleCrudFunctions
                         }
 
                         // Safe to cast since we've verified T implements ITableEntity
-                        var tableResult = await HandleTableStorageOperation<ITableEntity>(
+                        var tableResult = await HandleTableStorageOperation<T>(
                             operation, serviceName, storageConnectionString, data as ITableEntity, filter, pageSize, continuationToken);
-                        result = tableResult.Cast<T>();
+                        result = tableResult;
                     }
                     else if (storageType == Constants.Storage.StorageType.Blob)
                     {
@@ -124,7 +124,7 @@ public class HandleCrudFunctions
                     throw new ArgumentNullException(nameof(data), "Data is required for Update operation");
                 await tableStorage.UpdateEntityAsync(data as T 
                     ?? throw new ArgumentException("Invalid entity type for table storage"));
-                results.Add(data as T);
+                results.Add((data as T)!);
                 break;
 
             case Constants.Storage.Operations.Delete:
@@ -181,6 +181,49 @@ public class HandleCrudFunctions
         }
 
         return results;
+    }
+
+    public async Task<IEnumerable<T>> HandleBlobOperation<T>(
+        string operation,
+        string entityType,
+        string? blobName = null,
+        T? data = default) where T : class
+    {
+        var operationName = $"{operation}_{typeof(T).Name}";
+        using var timer = new OperationTimer(operationName, _metrics);
+
+        try
+        {
+            return await _circuitBreaker.ExecuteAsync(async () =>
+            {
+                return await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    var (serviceName, storageType) = GetStorageServiceInfo(entityType);
+                    
+                    if (storageType != Constants.Storage.StorageType.Blob)
+                    {
+                        throw new ArgumentException($"Entity type {entityType} is not configured for blob storage");
+                    }
+
+                    var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+                        ?? throw new InvalidOperationException("AzureWebJobsStorage connection string not configured");
+
+                    var result = await HandleBlobStorageOperation<T>(
+                        operation, serviceName, storageConnectionString, data, blobName);
+
+                    _metrics.IncrementCounter($"{operationName}_Success");
+                    _metrics.RecordValue($"{operationName}_ResultCount", result.Count());
+                    return result;
+                }, operationName);
+            }, operationName);
+        }
+        catch (Exception ex)
+        {
+            _metrics.IncrementCounter($"{operationName}_Error");
+            _logger.LogError(ex, "Error in blob operation {Operation} for type {Type}: {Error}",
+                operation, typeof(T).Name, ex.Message);
+            throw;
+        }
     }
 
     private static (string ServiceName, Constants.Storage.StorageType StorageType) GetStorageServiceInfo(string entityType)

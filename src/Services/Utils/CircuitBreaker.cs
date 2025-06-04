@@ -32,7 +32,7 @@ namespace AzTwWebsiteApi.Services.Utils
 
         public async Task<T> ExecuteAsync<T>(Func<Task<T>> operation, string operationName)
         {
-            await CheckCircuitState(operationName);
+            CheckCircuitState(operationName);
 
             try
             {
@@ -46,7 +46,7 @@ namespace AzTwWebsiteApi.Services.Utils
             }
         }
 
-        private async Task CheckCircuitState(string operationName)
+        private void CheckCircuitState(string operationName)
         {
             lock (_lock)
             {
@@ -77,7 +77,7 @@ namespace AzTwWebsiteApi.Services.Utils
             }
         }
 
-        private async Task<T> HandleFailure<T>(Exception ex, Func<Task<T>> operation, string operationName)
+        private Task<T> HandleFailure<T>(Exception ex, Func<Task<T>> operation, string operationName)
         {
             lock (_lock)
             {

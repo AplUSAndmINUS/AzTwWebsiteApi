@@ -65,19 +65,17 @@ namespace AzTwWebsiteApi.Models.Blog
 
   public class BlogImageMetadata : ITableEntity
   {
-      public string PartitionKey => "BlogImageMetadata"; // In BlogComment to optimize queries
-      public string RowKey => BlogImageMetadataId; // Unique identifier for the image metadata
+      public string PartitionKey { get; set; } = "BlogImageMetadata"; // Fixed value for all blog image metadata
+      public string RowKey { get; set; } = Guid.NewGuid().ToString(); // Auto-generated if not set
       public ETag ETag { get; set; }
       public DateTimeOffset? Timestamp { get; set; }
-      public required string BlogImageMetadataId { get; set; }
-      public required string BlogImageId { get; set; } // Image identified with the metadata
-      public required string BlobName { get; set; } // Name of the blob in storage
-      public required string ImageUrl { get; set; }
-      public required string Title { get; set; }
-      public required string AltText { get; set; }
-      public required string Description { get; set; }
-      string ITableEntity.PartitionKey { get => PartitionKey; set => throw new NotImplementedException(); }
-      string ITableEntity.RowKey { get => RowKey; set => throw new NotImplementedException(); }
+      public string BlogImageMetadataId { get; set; } = Guid.NewGuid().ToString();
+      public string BlogImageId { get; set; } = string.Empty; // Image identified with the metadata
+      public string BlobName { get; set; } = string.Empty; // Name of the blob in storage
+      public string ImageUrl { get; set; } = string.Empty;
+      public string Title { get; set; } = string.Empty;
+      public string AltText { get; set; } = string.Empty;
+      public string Description { get; set; } = string.Empty;
   }
     public class BlogCategory
     {
