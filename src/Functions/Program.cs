@@ -56,9 +56,10 @@ void ConfigureBlogServices(IServiceCollection services, string storageConnection
     {
         var logger = sp.GetRequiredService<ILogger<TableStorageService<BlogPost>>>();
         var metrics = sp.GetRequiredService<IMetricsService>();
-        var tableName = StorageSettings.TransformMockName(
-            Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog");
+        var rawTableName = Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog";
+        var tableName = StorageSettings.TransformMockName(rawTableName);
         
+        logger.LogInformation("Configuring BlogPost TableStorageService with table name: {TableName}", tableName);
         return new TableStorageService<BlogPost>(
             connectionString: storageConnectionString,
             tableName: tableName,
@@ -71,9 +72,10 @@ void ConfigureBlogServices(IServiceCollection services, string storageConnection
     {
         var logger = sp.GetRequiredService<ILogger<BlobStorageService<BlogImage>>>();
         var metrics = sp.GetRequiredService<IMetricsService>();
-        var containerName = StorageSettings.TransformMockName(
-            Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mock-blog-images");
+        var rawContainerName = Environment.GetEnvironmentVariable("BlogImagesContainerName") ?? "mock-blog-images";
+        var containerName = StorageSettings.TransformMockName(rawContainerName);
         
+        logger.LogInformation("Configuring BlogImage BlobStorageService with container name: {ContainerName}", containerName);
         return new BlobStorageService<BlogImage>(
             connectionString: storageConnectionString,
             containerName: containerName,
@@ -86,9 +88,10 @@ void ConfigureBlogServices(IServiceCollection services, string storageConnection
     {
         var logger = sp.GetRequiredService<ILogger<TableStorageService<BlogComment>>>();
         var metrics = sp.GetRequiredService<IMetricsService>();
-        var tableName = StorageSettings.TransformMockName(
-            Environment.GetEnvironmentVariable("BlogCommentsTableName") ?? "mockblogcomments");
+        var rawTableName = Environment.GetEnvironmentVariable("BlogCommentsTableName") ?? "mockblogcomments";
+        var tableName = StorageSettings.TransformMockName(rawTableName);
         
+        logger.LogInformation("Configuring BlogComment TableStorageService with table name: {TableName}", tableName);
         return new TableStorageService<BlogComment>(
             connectionString: storageConnectionString,
             tableName: tableName,

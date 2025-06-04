@@ -1,0 +1,254 @@
+{
+	"info": {
+		"_postman_id": "4a8e1b5c-5b3d-4c98-9b1c-e9a5d4f87d2e",
+		"name": "AzTwWebsiteApi",
+		"description": "Azure Functions API for Blog Management",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Blog Posts",
+			"item": [
+				{
+					"name": "Get All Blog Posts",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts?pageSize=10",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts"],
+							"query": [
+								{
+									"key": "pageSize",
+									"value": "10",
+									"description": "Optional: Number of posts per page"
+								},
+								{
+									"key": "continuationToken",
+									"value": "",
+									"description": "Optional: Token for next page",
+									"disabled": true
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Blog Post By ID",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}"]
+						}
+					}
+				},
+				{
+					"name": "Create Blog Post",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts"]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Sample Blog Post\",\n    \"content\": \"This is the content of my blog post.\",\n    \"imageUrl\": \"\",\n    \"authorId\": \"author123\",\n    \"tags\": \"sample,test\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Update Blog Post",
+					"request": {
+						"method": "PUT",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}"]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"id\": \"{{postId}}\",\n    \"title\": \"Updated Blog Post\",\n    \"content\": \"This is the updated content.\",\n    \"imageUrl\": \"\",\n    \"authorId\": \"author123\",\n    \"tags\": \"sample,updated\",\n    \"status\": \"Published\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Delete Blog Post",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Blog Comments",
+			"item": [
+				{
+					"name": "Get Comments By Post ID",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments"]
+						}
+					}
+				},
+				{
+					"name": "Add Comment",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments"]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"authorId\": \"commenter123\",\n    \"content\": \"This is a comment on the blog post.\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Update Comment",
+					"request": {
+						"method": "PUT",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments/{{commentId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}"]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"id\": \"{{commentId}}\",\n    \"authorId\": \"commenter123\",\n    \"content\": \"This is an updated comment.\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Delete Comment",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments/{{commentId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Blog Images",
+			"item": [
+				{
+					"name": "Get Image By ID",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/images/{{imageId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "images", "{{imageId}}"]
+						}
+					}
+				},
+				{
+					"name": "Upload Image",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/images",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "images"]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "image/jpeg"
+							},
+							{
+								"key": "Content-Filename",
+								"value": "sample-image.jpg"
+							}
+						],
+						"body": {
+							"mode": "file",
+							"file": {
+								"src": null
+							}
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "postId",
+			"value": "",
+			"description": "ID of the blog post"
+		},
+		{
+			"key": "commentId",
+			"value": "",
+			"description": "ID of the comment"
+		},
+		{
+			"key": "imageId",
+			"value": "",
+			"description": "ID of the image"
+		}
+	]
+}

@@ -28,8 +28,7 @@ public class BlogPostFunctions
         
         _connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
             ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
-        _blogPostsTableName = StorageSettings.TransformMockName(
-            Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog");
+        _blogPostsTableName = Environment.GetEnvironmentVariable("BlogPostsTableName") ?? "mockblog";
         
         _logger.LogInformation("BlogPostFunctions initialized with settings:");
         _logger.LogInformation("Using blog posts table name: {TableName}", _blogPostsTableName);

@@ -244,13 +244,19 @@ public class HandleCrudFunctions
     }
 
     private static (string ServiceName, Constants.Storage.StorageType StorageType) 
-        GetStorageServiceInfo(string entityType)
+        GetStorageServiceInfo(string tableName)
     {
-        if (!Constants.Storage.EntityStorageTypes.ContainsKey(entityType))
+        // For the storage type, we still need to map from the base entity type
+        var baseEntityType = tableName.ToLowerInvariant().StartsWith("mock") 
+            ? tableName[4..] // Skip "mock" prefix
+            : tableName;
+
+        if (!Constants.Storage.EntityStorageTypes.ContainsKey(baseEntityType))
         {
-            throw new ArgumentException($"Unknown entity type: {entityType}");
+            throw new ArgumentException($"Unknown entity type derived from table name: {baseEntityType}");
         }
 
-        return (entityType, Constants.Storage.EntityStorageTypes[entityType]);
+        // Return the original table name but get the storage type from the base entity type
+        return (tableName, Constants.Storage.EntityStorageTypes[baseEntityType]);
     }
 }
