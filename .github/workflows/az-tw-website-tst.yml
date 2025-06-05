@@ -57,6 +57,21 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+    - name: 'Update Function App Settings'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          az functionapp config appsettings set --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
+            --slot staging \
+            --settings \
+              AzureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              StorageAccountName="aztwwebsitestorage" \
+              BlogPostsTableName="mockblog-test" \
+              BlogCommentsTableName="mockblogcomments-test" \
+              BlogImagesContainerName="mock-blog-images-test" \
+              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+
     - name: 'Deploy to Azure Function App Staging Slot'
       uses: Azure/functions-action@v1
       with:
