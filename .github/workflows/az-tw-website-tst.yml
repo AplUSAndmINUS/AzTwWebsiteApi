@@ -15,6 +15,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: test
 
     steps:
     - name: 'Checkout Code'
@@ -69,8 +70,7 @@ jobs:
               StorageAccountName="aztwwebsitestorage" \
               BlogPostsTableName="mockblog" \
               BlogCommentsTableName="mockblogcomments" \
-              BlogImagesContainerName="mock-blog-images" \
-              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+              BlogImagesContainerName="mock-blog-images"
 
     - name: 'Deploy to Azure Function App Staging Slot'
       uses: Azure/functions-action@v1

@@ -70,7 +70,6 @@ jobs:
               BlogPostsTableName="blog" \
               BlogCommentsTableName="blogcomments" \
               BlogImagesContainerName="blog-images" \
-              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
 
     - name: 'Deploy to Azure Function App Staging Slot'
       uses: Azure/functions-action@v1
