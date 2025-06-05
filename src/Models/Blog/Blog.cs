@@ -28,7 +28,7 @@ namespace AzTwWebsiteApi.Models.Blog
 
     public class BlogComment : ITableEntity
     {
-        public string PartitionKey { get; set; } // Initialize in the constructor
+        public string PartitionKey { get; set; } // BlogPostId
         public string RowKey { get; set; } = Guid.NewGuid().ToString(); // Unique identifier for the comment
 
         public ETag ETag { get; set; }
@@ -37,17 +37,33 @@ namespace AzTwWebsiteApi.Models.Blog
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string BlogPostId { get; set; } = string.Empty; // Reference to the blog post
         public string AuthorId { get; set; } = string.Empty; // Reference to the author
+        public string AuthorName { get; set; } = string.Empty; // Display name of the author
         public string Content { get; set; } = string.Empty;
-
-        public DateTime PublishDate { get; set; }
-        public DateTime LastModified { get; set; }
+        public string EmailAddress { get; set; } = string.Empty; // Optional, for notifications
+        
+        public DateTime PublishDate { get; set; } = DateTime.UtcNow;
+        public DateTime LastModified { get; set; } = DateTime.UtcNow;
 
         public bool IsApproved { get; set; } = false;
         public bool IsSpam { get; set; } = false;
+        public bool IsLiked { get; set; } = false; // Track if the comment is liked
+        public int LikeCount { get; set; } = 0; // Track number of likes
+        public int ReportCount { get; set; } = 0; // Track number of times comment was reported
 
+        // Don't set PartitionKey in constructor as it needs BlogPostId
         public BlogComment()
         {
-            PartitionKey = BlogPostId; // Initialize PartitionKey in the constructor
+            PartitionKey = string.Empty; // Will be set properly in Initialize
+        }
+
+        // Helper method to properly initialize the comment
+        public void Initialize(string blogPostId)
+        {
+            BlogPostId = blogPostId;
+            PartitionKey = blogPostId;
+            RowKey = Id;
+            PublishDate = DateTime.UtcNow;
+            LastModified = DateTime.UtcNow;
         }
     }
 

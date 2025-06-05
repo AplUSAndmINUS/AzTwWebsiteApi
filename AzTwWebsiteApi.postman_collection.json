@@ -117,11 +117,23 @@
 					"request": {
 						"method": "GET",
 						"url": {
-							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments",
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments?pageSize=25&showUnapproved=false",
 							"protocol": "http",
 							"host": ["localhost"],
 							"port": "7071",
-							"path": ["api", "blog", "posts", "{{postId}}", "comments"]
+							"path": ["api", "blog", "posts", "{{postId}}", "comments"],
+							"query": [
+								{
+									"key": "pageSize",
+									"value": "25",
+									"description": "Optional: Number of comments per page"
+								},
+								{
+									"key": "showUnapproved",
+									"value": "false",
+									"description": "Optional: Show unapproved comments"
+								}
+							]
 						}
 					}
 				},
@@ -144,7 +156,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"authorId\": \"commenter123\",\n    \"content\": \"This is a comment on the blog post.\"\n}"
+							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"authorId\": \"commenter123\",\n    \"authorName\": \"John Doe\",\n    \"content\": \"This is a comment on the blog post.\",\n    \"emailAddress\": \"john@example.com\"\n}"
 						}
 					}
 				},
@@ -167,7 +179,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"id\": \"{{commentId}}\",\n    \"authorId\": \"commenter123\",\n    \"content\": \"This is an updated comment.\"\n}"
+							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"id\": \"{{commentId}}\",\n    \"authorId\": \"commenter123\",\n    \"authorName\": \"John Doe\",\n    \"content\": \"This is an updated comment.\",\n    \"emailAddress\": \"john@example.com\"\n}"
 						}
 					}
 				},
@@ -181,6 +193,45 @@
 							"host": ["localhost"],
 							"port": "7071",
 							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}"]
+						}
+					}
+				},
+				{
+					"name": "Approve Comment",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments/{{commentId}}/approve",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}", "approve"]
+						}
+					}
+				},
+				{
+					"name": "Mark Comment as Spam",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments/{{commentId}}/spam",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}", "spam"]
+						}
+					}
+				},
+				{
+					"name": "Mark Comment as Liked",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments/{{commentId}}/like",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}", "like"]
 						}
 					}
 				}
