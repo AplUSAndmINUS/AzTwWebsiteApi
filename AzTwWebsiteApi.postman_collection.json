@@ -179,7 +179,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"id\": \"{{commentId}}\",\n    \"authorId\": \"commenter123\",\n    \"authorName\": \"John Doe\",\n    \"content\": \"This is an updated comment.\",\n    \"emailAddress\": \"john@example.com\"\n}"
+							"raw": "{\n    \"blogPostId\": \"{{postId}}\",\n    \"id\": \"{{commentId}}\",\n    \"authorId\": \"commenter123\",\n    \"authorName\": \"John Doe\",\n    \"content\": \"This is an updated comment.\",\n    \"emailAddress\": \"john@example.com\",\n    \"isApproved\": true,\n    \"isSpam\": false\n}"
 						}
 					}
 				},

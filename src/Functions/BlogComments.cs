@@ -153,26 +153,96 @@ public class BlogCommentFunctions
             
         try
         {
-            var blogComment = await JsonSerializer.DeserializeAsync<BlogComment>(req.Body);
-            if (blogComment == null) return await CreateNotFoundResponse(req, "Comment not found");
+            // Log the raw request body for debugging
+            string requestBody;
+            using (var reader = new StreamReader(req.Body))
+            {
+                requestBody = await reader.ReadToEndAsync();
+                req.Body.Position = 0; // Reset position for later use
+            }
+            _logger.LogInformation("Raw request body: {RequestBody}", requestBody);
 
-            // Validate comment
-            await ValidateBlogComment(blogComment);
-
-            blogComment.PartitionKey = postId;
-            blogComment.RowKey = commentId;
-            blogComment.LastModified = DateTime.UtcNow;
-
-            var options = new CrudOperationOptions
+            // First, get the existing comment
+            var getOptions = new CrudOperationOptions
             {
                 ConnectionString = _connectionString,
-                Data = blogComment
+                Filter = $"PartitionKey eq '{postId}' and RowKey eq '{commentId}'"
+            };
+
+            var existingResult = await _crudFunctions.HandleCrudOperation<BlogComment>(
+                operation: Constants.Storage.Operations.Get,
+                entityType: _blogCommentsTableName,
+                options: getOptions);
+
+            var existingComment = existingResult.Items.FirstOrDefault();
+            if (existingComment == null) 
+            {
+                _logger.LogWarning("Comment not found. PostId: {PostId}, CommentId: {CommentId}", postId, commentId);
+                return await CreateNotFoundResponse(req, "Comment not found");
+            }
+
+            _logger.LogInformation("Found existing comment: {@ExistingComment}", existingComment);
+
+            // Deserialize the update request
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                WriteIndented = true
+            };
+            
+            var updateData = JsonSerializer.Deserialize<BlogComment>(requestBody, jsonOptions);
+            if (updateData == null)
+            {
+                _logger.LogError("Failed to deserialize update request body");
+                throw new ArgumentNullException(nameof(updateData));
+            }
+
+            _logger.LogInformation("Successfully deserialized update data: {@UpdateData}", updateData);
+
+            // Make a copy of the existing comment for updates
+            var updatedComment = existingComment;
+
+            // Merge the updates with the existing comment, carefully preserving existing values
+            if (!string.IsNullOrWhiteSpace(updateData.Content))
+            {
+                _logger.LogInformation("Updating content from '{OldContent}' to '{NewContent}'", 
+                    updatedComment.Content, updateData.Content);
+                updatedComment.Content = updateData.Content;
+            }
+
+            if (!string.IsNullOrWhiteSpace(updateData.AuthorName))
+            {
+                updatedComment.AuthorName = updateData.AuthorName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(updateData.EmailAddress))
+            {
+                updatedComment.EmailAddress = updateData.EmailAddress;
+            }
+
+            // These are optional and can be updated if provided
+            updatedComment.IsApproved = updateData.IsApproved;
+            updatedComment.IsSpam = updateData.IsSpam;
+
+            // Update timestamp
+            updatedComment.LastModified = DateTime.UtcNow;
+
+            _logger.LogInformation("Final merged comment state: {@UpdatedComment}", updatedComment);
+
+            // Validate the merged comment
+            await ValidateBlogComment(updatedComment);
+
+            // Save the updated comment
+            var updateOptions = new CrudOperationOptions
+            {
+                ConnectionString = _connectionString,
+                Data = updatedComment
             };
 
             var result = await _crudFunctions.HandleCrudOperation<BlogComment>(
                 operation: Constants.Storage.Operations.Update,
                 entityType: _blogCommentsTableName,
-                options: options);
+                options: updateOptions);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(result.Items.First());
@@ -290,7 +360,7 @@ public class BlogCommentFunctions
             var comment = result.Items.FirstOrDefault();
             if (comment == null) return await CreateNotFoundResponse(req, "Comment not found");
 
-            comment.IsSpam = true;
+            comment.IsSpam = !comment.IsSpam; // Toggle spam status
             comment.IsApproved = false;
             comment.IsLiked = false;
             comment.LastModified = DateTime.UtcNow;
@@ -394,21 +464,37 @@ public class BlogCommentFunctions
         return bool.TryParse(value, out var result) ? result : defaultValue;
     }
 
-    private static Task ValidateBlogComment(BlogComment comment)
+    private Task ValidateBlogComment(BlogComment comment)
     {
+        if (comment == null)
+            throw new ArgumentNullException(nameof(comment));
+
+        _logger.LogInformation("Validating comment: Content='{Content}', AuthorName='{AuthorName}', EmailAddress='{EmailAddress}'",
+            comment.Content,
+            comment.AuthorName,
+            comment.EmailAddress);
+
         if (string.IsNullOrWhiteSpace(comment.Content))
+        {
+            _logger.LogWarning("Comment content is empty or whitespace");
             throw new ArgumentException("Comment content is required");
+        }
 
         if (string.IsNullOrWhiteSpace(comment.AuthorName))
+        {
+            _logger.LogWarning("Author name is empty or whitespace");
             throw new ArgumentException("Author name is required");
+        }
 
         if (!string.IsNullOrWhiteSpace(comment.EmailAddress) && 
             !System.Text.RegularExpressions.Regex.IsMatch(comment.EmailAddress, 
                 @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
         {
+            _logger.LogWarning("Invalid email format: {EmailAddress}", comment.EmailAddress);
             throw new ArgumentException("Invalid email address format");
         }
 
+        _logger.LogInformation("Comment validation successful");
         return Task.CompletedTask;
     }
 }
