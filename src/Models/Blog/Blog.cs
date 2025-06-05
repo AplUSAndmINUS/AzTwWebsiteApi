@@ -57,13 +57,14 @@ namespace AzTwWebsiteApi.Models.Blog
         }
 
         // Helper method to properly initialize the comment
-        public void Initialize(string blogPostId)
+        public void Initialize(string blogPostId, bool approveByDefault = true)
         {
             BlogPostId = blogPostId;
             PartitionKey = blogPostId;
             RowKey = Id;
             PublishDate = DateTime.UtcNow;
             LastModified = DateTime.UtcNow;
+            IsApproved = approveByDefault;
         }
     }
 
