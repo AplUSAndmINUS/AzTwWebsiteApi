@@ -58,13 +58,7 @@ jobs:
         inlineScript: |
           az functionapp config appsettings set --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group az-tw-website-functions \
-            --settings \
-              AzureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-              StorageAccountName="aztwwebsitestorage" \
-              BlogPostsTableName="mockblog" \
-              BlogCommentsTableName="mockblogcomments" \
-              BlogImagesContainerName="mock-blog-images" \
-              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+            --settings AzureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" StorageAccountName="aztwwebsitestorage" BlogPostsTableName="mockblog" BlogCommentsTableName="mockblogcomments" BlogImagesContainerName="mock-blog-images" WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
