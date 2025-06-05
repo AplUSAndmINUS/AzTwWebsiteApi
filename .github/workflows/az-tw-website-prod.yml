@@ -67,9 +67,9 @@ jobs:
             --settings \
               AzureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
               StorageAccountName="aztwwebsitestorage" \
-              BlogPostsTableName="mockblog-prod" \
-              BlogCommentsTableName="mockblogcomments-prod" \
-              BlogImagesContainerName="mock-blog-images-prod" \
+              BlogPostsTableName="blog" \
+              BlogCommentsTableName="blogcomments" \
+              BlogImagesContainerName="blog-images" \
               WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
 
     - name: 'Deploy to Azure Function App Staging Slot'
