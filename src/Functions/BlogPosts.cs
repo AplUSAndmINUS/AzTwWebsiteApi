@@ -143,25 +143,37 @@ public class BlogPostFunctions
 
         try
         {
-            // First deserialize to a dynamic object to handle the incoming format
-            using var jsonDoc = await JsonDocument.ParseAsync(req.Body);
-            var element = jsonDoc.RootElement;
-
-            string TryGetPropertyCaseInsensitive(JsonElement element, string propertyName)
+            string requestBody;
+            using (var reader = new StreamReader(req.Body))
             {
-                foreach (var property in element.EnumerateObject())
-                {
-                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return property.Value.GetString() ?? string.Empty;
-                    }
-                }
-                return string.Empty;
+                requestBody = await reader.ReadToEndAsync();
+                _logger.LogInformation("Received request body: {Body}", requestBody);
             }
 
-            DateTime? TryGetDateTimeCaseInsensitive(JsonElement element, string propertyName)
+            using var jsonDoc = JsonDocument.Parse(requestBody);
+            var element = jsonDoc.RootElement;
+
+            string TryGetPropertyCaseInsensitive(JsonElement elem, string propertyName, string defaultValue = "")
             {
-                foreach (var property in element.EnumerateObject())
+                foreach (var property in elem.EnumerateObject())
+                {
+                    _logger.LogInformation("Checking property: {PropertyName} against {SearchName}", 
+                        property.Name, propertyName);
+                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var value = property.Value.GetString() ?? defaultValue;
+                        _logger.LogInformation("Found match. Value: {Value}", value);
+                        return value;
+                    }
+                }
+                _logger.LogInformation("No match found for {PropertyName}, using default: {Default}", 
+                    propertyName, defaultValue);
+                return defaultValue;
+            }
+
+            DateTime? TryGetDateTimeCaseInsensitive(JsonElement elem, string propertyName)
+            {
+                foreach (var property in elem.EnumerateObject())
                 {
                     if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
                     {
@@ -178,24 +190,33 @@ public class BlogPostFunctions
                 return null;
             }
 
+            // Create new blog post with provided values or defaults
+            var id = TryGetPropertyCaseInsensitive(element, "id", Guid.NewGuid().ToString());
+            var title = TryGetPropertyCaseInsensitive(element, "title");
+            var content = TryGetPropertyCaseInsensitive(element, "content");
+            var authorId = TryGetPropertyCaseInsensitive(element, "author");
+            var status = TryGetPropertyCaseInsensitive(element, "status", Constants.Blog.Status.Draft);
+
+            _logger.LogInformation("Extracted values: Id={Id}, Title={Title}, Author={Author}, Status={Status}",
+                id, title, authorId, status);
+
             var blogPost = new BlogPost
             {
-                Id = TryGetPropertyCaseInsensitive(element, "id") ?? Guid.NewGuid().ToString(),
-                Title = TryGetPropertyCaseInsensitive(element, "title"),
-                Content = TryGetPropertyCaseInsensitive(element, "content"),
-                AuthorId = TryGetPropertyCaseInsensitive(element, "author"),
-                Status = TryGetPropertyCaseInsensitive(element, "status") ?? Constants.Blog.Status.Draft,
-                PublishDate = TryGetDateTimeCaseInsensitive(element, "publisheddate") ?? DateTime.UtcNow,
+                Id = id,
+                PartitionKey = id,
+                RowKey = id,
+                Title = title,
+                Content = content,
+                AuthorId = authorId,
+                ImageUrl = TryGetPropertyCaseInsensitive(element, "imageUrl"),
+                Tags = TryGetPropertyCaseInsensitive(element, "tags"),
+                Status = status,
+                PublishDate = TryGetDateTimeCaseInsensitive(element, "publishedDate") ?? DateTime.UtcNow,
                 LastModified = DateTime.UtcNow
             };
 
-            // Ensure required Table Storage properties are set
-            blogPost.PartitionKey = blogPost.Id;
-            blogPost.RowKey = blogPost.Id;
-
-            _logger.LogInformation(
-                "Creating blog post: Id={Id}, Title={Title}, Author={Author}, Status={Status}", 
-                blogPost.Id, blogPost.Title, blogPost.AuthorId, blogPost.Status);
+            _logger.LogInformation("Created blog post object: {BlogPost}", 
+                JsonSerializer.Serialize(blogPost));
 
             var options = new CrudOperationOptions
             {
@@ -207,6 +228,9 @@ public class BlogPostFunctions
                 operation: Constants.Storage.Operations.Set,
                 entityType: _blogPostsTableName,
                 options: options);
+
+            _logger.LogInformation("Operation result: {Result}", 
+                JsonSerializer.Serialize(result.Items.First()));
 
             var response = req.CreateResponse(HttpStatusCode.Created);
             await response.WriteAsJsonAsync(result.Items.First());
@@ -259,22 +283,35 @@ public class BlogPostFunctions
             }
 
             var existingPost = existingResult.Items.First();
-            _logger.LogInformation("Found existing post: Id={Id}, PartitionKey={PartitionKey}, RowKey={RowKey}", 
-                existingPost.Id, existingPost.PartitionKey, existingPost.RowKey);
+            _logger.LogInformation("Found existing post: {Post}", 
+                JsonSerializer.Serialize(existingPost));
 
             // Parse the update data
-            using var jsonDoc = await JsonDocument.ParseAsync(req.Body);
+            string requestBody;
+            using (var reader = new StreamReader(req.Body))
+            {
+                requestBody = await reader.ReadToEndAsync();
+                _logger.LogInformation("Received request body: {Body}", requestBody);
+            }
+
+            using var jsonDoc = JsonDocument.Parse(requestBody);
             var element = jsonDoc.RootElement;
 
             string TryGetPropertyCaseInsensitive(JsonElement elem, string propertyName, string defaultValue)
             {
                 foreach (var property in elem.EnumerateObject())
                 {
+                    _logger.LogInformation("Checking property: {PropertyName} against {SearchName}", 
+                        property.Name, propertyName);
                     if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
                     {
-                        return property.Value.GetString() ?? defaultValue;
+                        var value = property.Value.GetString() ?? defaultValue;
+                        _logger.LogInformation("Found match. Value: {Value}", value);
+                        return value;
                     }
                 }
+                _logger.LogInformation("No match found for {PropertyName}, using default: {Default}", 
+                    propertyName, defaultValue);
                 return defaultValue;
             }
 
@@ -297,7 +334,7 @@ public class BlogPostFunctions
                 return null;
             }
 
-            // Update the existing post with new values, keeping the original values if not provided
+            // Update the post, preserving existing values if not provided in the update
             var updatedPost = new BlogPost
             {
                 Id = existingPost.Id,
@@ -314,9 +351,8 @@ public class BlogPostFunctions
                 ETag = existingPost.ETag  // Preserve the ETag for optimistic concurrency
             };
 
-            _logger.LogInformation(
-                "Updating blog post: Id={Id}, Title={Title}, Author={Author}, Status={Status}", 
-                updatedPost.Id, updatedPost.Title, updatedPost.AuthorId, updatedPost.Status);
+            _logger.LogInformation("Updating to: {UpdatedPost}", 
+                JsonSerializer.Serialize(updatedPost));
 
             var updateOptions = new CrudOperationOptions
             {
@@ -328,6 +364,9 @@ public class BlogPostFunctions
                 operation: Constants.Storage.Operations.Update,
                 entityType: _blogPostsTableName,
                 options: updateOptions);
+
+            _logger.LogInformation("Update result: {Result}", 
+                JsonSerializer.Serialize(result.Items.First()));
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(result.Items.First());
