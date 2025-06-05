@@ -264,11 +264,11 @@ public class BlogPostFunctions
 
         try
         {
-            // First, try to get the existing post to ensure it exists and get its keys
+            // First, try to get the existing post
             var getOptions = new CrudOperationOptions
             {
                 ConnectionString = _connectionString,
-                Filter = $"RowKey eq '{id}'"  // Search by RowKey which could be numeric or full ID
+                Filter = $"RowKey eq '{id}'"
             };
 
             var existingResult = await _crudFunctions.HandleCrudOperation<BlogPost>(
@@ -283,75 +283,82 @@ public class BlogPostFunctions
             }
 
             var existingPost = existingResult.Items.First();
-            _logger.LogInformation("Found existing post: {Post}", 
-                JsonSerializer.Serialize(existingPost));
+            _logger.LogInformation("Found existing post: {Post}", JsonSerializer.Serialize(existingPost));
 
-            // Parse the update data
+            // Read and log the update request
             string requestBody;
             using (var reader = new StreamReader(req.Body))
             {
                 requestBody = await reader.ReadToEndAsync();
-                _logger.LogInformation("Received request body: {Body}", requestBody);
+                _logger.LogInformation("Received update request body: {Body}", requestBody);
             }
 
             using var jsonDoc = JsonDocument.Parse(requestBody);
             var element = jsonDoc.RootElement;
 
-            string TryGetPropertyCaseInsensitive(JsonElement elem, string propertyName, string defaultValue)
-            {
-                foreach (var property in elem.EnumerateObject())
-                {
-                    _logger.LogInformation("Checking property: {PropertyName} against {SearchName}", 
-                        property.Name, propertyName);
-                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        var value = property.Value.GetString() ?? defaultValue;
-                        _logger.LogInformation("Found match. Value: {Value}", value);
-                        return value;
-                    }
-                }
-                _logger.LogInformation("No match found for {PropertyName}, using default: {Default}", 
-                    propertyName, defaultValue);
-                return defaultValue;
-            }
-
-            DateTime? TryGetDateTimeCaseInsensitive(JsonElement elem, string propertyName)
-            {
-                foreach (var property in elem.EnumerateObject())
-                {
-                    if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        try
-                        {
-                            return property.Value.GetDateTime();
-                        }
-                        catch
-                        {
-                            return null;
-                        }
-                    }
-                }
-                return null;
-            }
-
-            // Update the post, preserving existing values if not provided in the update
+            // Create a new blog post with all the existing values
             var updatedPost = new BlogPost
             {
                 Id = existingPost.Id,
                 PartitionKey = existingPost.PartitionKey,
                 RowKey = existingPost.RowKey,
-                Title = TryGetPropertyCaseInsensitive(element, "title", existingPost.Title),
-                Content = TryGetPropertyCaseInsensitive(element, "content", existingPost.Content),
-                AuthorId = TryGetPropertyCaseInsensitive(element, "author", existingPost.AuthorId),
-                ImageUrl = TryGetPropertyCaseInsensitive(element, "imageUrl", existingPost.ImageUrl),
-                Tags = TryGetPropertyCaseInsensitive(element, "tags", existingPost.Tags),
-                Status = TryGetPropertyCaseInsensitive(element, "status", existingPost.Status),
-                PublishDate = TryGetDateTimeCaseInsensitive(element, "publishedDate") ?? existingPost.PublishDate,
-                LastModified = DateTime.UtcNow,
-                ETag = existingPost.ETag  // Preserve the ETag for optimistic concurrency
+                Title = existingPost.Title,
+                Content = existingPost.Content,
+                AuthorId = existingPost.AuthorId,
+                ImageUrl = existingPost.ImageUrl,
+                Tags = existingPost.Tags,
+                Status = existingPost.Status,
+                PublishDate = existingPost.PublishDate,
+                LastModified = DateTime.UtcNow
             };
 
-            _logger.LogInformation("Updating to: {UpdatedPost}", 
+            // Track which fields are being updated
+            var updatedFields = new List<string>();
+
+            // Update only the fields that are present in the request
+            foreach (var property in element.EnumerateObject())
+            {
+                var propertyName = property.Name.ToLowerInvariant();
+                _logger.LogInformation("Processing update for field: {PropertyName}", propertyName);
+
+                switch (propertyName)
+                {
+                    case "title":
+                        updatedPost.Title = property.Value.GetString() ?? existingPost.Title;
+                        updatedFields.Add("Title");
+                        break;
+                    case "content":
+                        updatedPost.Content = property.Value.GetString() ?? existingPost.Content;
+                        updatedFields.Add("Content");
+                        break;
+                    case "author":
+                        updatedPost.AuthorId = property.Value.GetString() ?? existingPost.AuthorId;
+                        updatedFields.Add("AuthorId");
+                        break;
+                    case "imageurl":
+                        updatedPost.ImageUrl = property.Value.GetString() ?? existingPost.ImageUrl;
+                        updatedFields.Add("ImageUrl");
+                        break;
+                    case "tags":
+                        updatedPost.Tags = property.Value.GetString() ?? existingPost.Tags;
+                        updatedFields.Add("Tags");
+                        break;
+                    case "status":
+                        updatedPost.Status = property.Value.GetString() ?? existingPost.Status;
+                        updatedFields.Add("Status");
+                        break;
+                    case "publisheddate":
+                        if (property.Value.TryGetDateTime(out var date))
+                        {
+                            updatedPost.PublishDate = date;
+                            updatedFields.Add("PublishDate");
+                        }
+                        break;
+                }
+            }
+
+            _logger.LogInformation("Fields being updated: {Fields}", string.Join(", ", updatedFields));
+            _logger.LogInformation("Updated post state before storage: {UpdatedPost}", 
                 JsonSerializer.Serialize(updatedPost));
 
             var updateOptions = new CrudOperationOptions
@@ -360,16 +367,23 @@ public class BlogPostFunctions
                 Data = updatedPost
             };
 
+            _logger.LogInformation("Calling HandleCrudOperation with Update operation");
             var result = await _crudFunctions.HandleCrudOperation<BlogPost>(
-                operation: Constants.Storage.Operations.Update,
+                operation: Constants.Storage.Operations.Update,  // Make sure we use the Update operation
                 entityType: _blogPostsTableName,
                 options: updateOptions);
 
-            _logger.LogInformation("Update result: {Result}", 
-                JsonSerializer.Serialize(result.Items.First()));
+            if (!result.Items.Any())
+            {
+                _logger.LogError("Update operation did not return any items");
+                throw new InvalidOperationException("Update operation failed to return the updated entity");
+            }
+
+            var updatedResult = result.Items.First();
+            _logger.LogInformation("Update result: {Result}", JsonSerializer.Serialize(updatedResult));
 
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(result.Items.First());
+            await response.WriteAsJsonAsync(updatedResult);
             return response;
         }
         catch (Exception ex)

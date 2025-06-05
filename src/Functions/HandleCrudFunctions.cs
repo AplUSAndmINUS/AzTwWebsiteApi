@@ -161,9 +161,58 @@ public class HandleCrudFunctions
             case Constants.Storage.Operations.Update:
                 if (options.Data == null)
                     throw new ArgumentNullException(nameof(options.Data), "Data is required for Update operation");
-                var entity = options.Data as T ?? throw new ArgumentException("Invalid entity type for table storage");
-                await tableStorage.UpdateEntityAsync(entity);
-                result.Items.Add(entity);
+                var updateEntity = options.Data as T ?? throw new ArgumentException("Invalid entity type for table storage");
+                
+                _logger.LogInformation("Fetching existing entity for update: PartitionKey={PartitionKey}, RowKey={RowKey}",
+                    updateEntity.PartitionKey, updateEntity.RowKey);
+                    
+                // First get the existing entity
+                var existingEntity = await tableStorage.GetEntityAsync(updateEntity.PartitionKey, updateEntity.RowKey);
+                if (existingEntity == null)
+                {
+                    throw new KeyNotFoundException($"Entity with PartitionKey={updateEntity.PartitionKey}, RowKey={updateEntity.RowKey} not found");
+                }
+
+                _logger.LogInformation("Existing entity before update: {Entity}", JsonSerializer.Serialize(existingEntity));
+
+                // Copy non-null properties from update to existing entity to preserve existing values
+                foreach (var property in typeof(T).GetProperties())
+                {
+                    if (property.Name == nameof(ITableEntity.PartitionKey) || 
+                        property.Name == nameof(ITableEntity.RowKey) ||
+                        property.Name == nameof(ITableEntity.ETag) ||
+                        property.Name == nameof(ITableEntity.Timestamp) ||
+                        !property.CanWrite) // Skip read-only properties
+                        continue;
+
+                    var updateValue = property.GetValue(updateEntity);
+                    if (updateValue != null &&
+                        !string.Equals(updateValue.ToString(), property.PropertyType.GetDefault()?.ToString()))
+                    {
+                        _logger.LogInformation("Updating property {Property}: {OldValue} -> {NewValue}",
+                            property.Name,
+                            property.GetValue(existingEntity),
+                            updateValue);
+                            
+                        property.SetValue(existingEntity, updateValue);
+                    }
+                }
+
+                _logger.LogInformation("Merged entity before update: {Entity}", JsonSerializer.Serialize(existingEntity));
+                await tableStorage.UpdateEntityAsync(existingEntity);
+                
+                // After update, retrieve the entity to confirm the update
+                var updatedEntity = await tableStorage.GetEntityAsync(existingEntity.PartitionKey, existingEntity.RowKey);
+                if (updatedEntity != null)
+                {
+                    _logger.LogInformation("Retrieved updated entity: {Entity}", JsonSerializer.Serialize(updatedEntity));
+                    result.Items.Add(updatedEntity);
+                }
+                else
+                {
+                    _logger.LogWarning("Updated entity could not be retrieved. Adding merged entity to result.");
+                    result.Items.Add(existingEntity);
+                }
                 break;
 
             case Constants.Storage.Operations.Delete:
