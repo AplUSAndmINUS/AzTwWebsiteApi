@@ -33,12 +33,6 @@ jobs:
         rm -rf ${{ env.OUTPUT_PATH }}
         mkdir -p ${{ env.OUTPUT_PATH }}
         
-        # Install Function Core Tools globally to generate function.json files
-        npm install -g azure-functions-core-tools@4
-        
-        # Install dotnet-tools
-        dotnet tool restore
-        
         # Build the function project first
         dotnet build ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
@@ -57,9 +51,19 @@ jobs:
           -p:GenerateFunctionMetadata=true \
           -p:_FunctionsSkipCleanOutput=true
 
-        # Check for generated function.json files
-        echo "Checking for generated function files in output directory:"
+        # Enhanced diagnostics for function.json files
+        echo "==== Checking for generated function files in output directory ===="
         find ${{ env.OUTPUT_PATH }} -name "function.json" | sort
+        
+        # If no function.json files found, show the directory structure
+        if [ -z "$(find ${{ env.OUTPUT_PATH }} -name "function.json")" ]; then
+          echo "==== WARNING: No function.json files found! Showing output directory structure ===="
+          find ${{ env.OUTPUT_PATH }} -type f | sort
+          
+          # Look for function attributes to double-check the functions exist in the code
+          echo "==== Checking for Function attributes in the assembly ===="
+          grep -r "Function(" ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} --include="*.cs" | head -20
+        fi
         
         # Create deployment package
         cd ${{ env.OUTPUT_PATH }}
@@ -95,3 +99,18 @@ jobs:
         respect-funcignore: true
         scm-do-build-during-deployment: false
         enable-oryx-build: false
+    
+    - name: 'Verify Function App Deployment'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          echo "==== Checking deployed Azure Function App ===="
+          echo "Function App status:"
+          az functionapp show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --query "{State:state, DefaultHostName:defaultHostName, Runtime:siteConfig.linuxFxVersion}"
+          
+          echo "==== Functions list ===="
+          az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --output table
