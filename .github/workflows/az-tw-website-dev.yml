@@ -33,7 +33,7 @@ jobs:
         rm -rf ${{ env.OUTPUT_PATH }}
         mkdir -p ${{ env.OUTPUT_PATH }}
 
-        # Build and publish the project
+        # Build and publish the project with explicit function generation
         dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
           --output ${{ env.OUTPUT_PATH }} \
@@ -41,8 +41,14 @@ jobs:
           --self-contained false \
           -p:PublishReadyToRun=false \
           -p:GenerateRuntimeConfigurationFiles=true \
-          -p:UseAppHost=false
+          -p:UseAppHost=false \
+          -p:GenerateFunctionMetadata=true \
+          -p:_FunctionsSkipCleanOutput=true
 
+        # Check for generated function.json files
+        echo "Checking for generated function files in output directory:"
+        find ${{ env.OUTPUT_PATH }} -name "function.json" | sort
+        
         # Create deployment package
         cd ${{ env.OUTPUT_PATH }}
         zip -r ../function-app.zip ./*
@@ -64,7 +70,10 @@ jobs:
               StorageAccountName="aztwwebsitestorage" \
               BlogPostsTableName="mockblog" \
               BlogCommentsTableName="mockblogcomments" \
-              BlogImagesContainerName="mock-blog-images"
+              BlogImagesContainerName="mock-blog-images" \
+              FUNCTIONS_WORKER_RUNTIME="dotnet-isolated" \
+              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              WEBSITE_RUN_FROM_PACKAGE="1"
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1

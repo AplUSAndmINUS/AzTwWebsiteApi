@@ -3,13 +3,20 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Extensions.Http; // Ensure HTTP extension is loaded
+using Microsoft.Azure.Functions.Worker.Http;
 using AzTwWebsiteApi.Models.Blog;
 using AzTwWebsiteApi.Services.Blog;
 using AzTwWebsiteApi.Services.Storage;
 using AzTwWebsiteApi.Functions;
 using AzTwWebsiteApi.Services.Utils;
+using System.Reflection;
+using System.Threading.Tasks; // For async Main
+using System; // For Console
 
+// Simplified entry point for .NET isolated functions
 var host = new HostBuilder()
+    // Use the default worker configuration
     .ConfigureFunctionsWorkerDefaults()
     .ConfigureAppConfiguration((context, config) =>
     {
@@ -48,6 +55,10 @@ var host = new HostBuilder()
         ConfigureBlogServices(services, storageConnectionString);
     })
     .Build();
+
+// Add this to properly log more information about the host startup
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("Starting host with functions: BlogPostFunctions, BlogCommentFunctions, BlogImageFunctions");
 
 void ConfigureBlogServices(IServiceCollection services, string storageConnectionString)
 {
@@ -100,4 +111,5 @@ void ConfigureBlogServices(IServiceCollection services, string storageConnection
     });
 }
 
+// Run the host synchronously to properly initialize all components
 host.Run();
