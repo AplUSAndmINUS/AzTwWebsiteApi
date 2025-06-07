@@ -1,8 +1,8 @@
 {
   "profiles": {
-    "BlogFunctions": {
+    "Functions": {
       "commandName": "Project",
-      "commandLineArgs": "--port 7069",
+      "commandLineArgs": "--port 7040",
       "launchBrowser": false
     }
   }

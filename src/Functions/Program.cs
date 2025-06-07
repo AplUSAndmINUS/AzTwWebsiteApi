@@ -1,10 +1,13 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Azure.Functions.Worker.Extensions.Http; // Ensure HTTP extension is loaded
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using AzTwWebsiteApi.Models.Blog;
 using AzTwWebsiteApi.Services.Blog;
 using AzTwWebsiteApi.Services.Storage;
@@ -63,6 +66,10 @@ logger.LogInformation("Starting host with functions: BlogPostFunctions, BlogComm
 
 // Verify that functions are properly discovered
 FunctionRegistrationHelper.VerifyFunctionDiscovery(host);
+
+// Configure Application Insights telemetry for the worker service
+services.AddApplicationInsightsTelemetryWorkerService();
+services.ConfigureFunctionsApplicationInsights();
 
 // Run the host
 await host.RunAsync();
