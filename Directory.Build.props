@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Force generation of function.json files -->
+    <GenerateFunctionMetadata>true</GenerateFunctionMetadata>
+    <_FunctionsSkipCleanOutput>true</_FunctionsSkipCleanOutput>
+  </PropertyGroup>
+</Project>
