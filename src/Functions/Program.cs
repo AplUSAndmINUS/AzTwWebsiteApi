@@ -1,6 +1,5 @@
 
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Azure.Functions.Worker.Extensions.Http; // Ensure HTTP extension is loaded
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,8 +58,7 @@ var host = new HostBuilder()
         ConfigureBlogServices(services, storageConnectionString);
 
          // Configure Application Insights telemetry for the worker service
-        services.AddApplicationInsightsTelemetryWorkerService();
-        services.ConfigureFunctionsApplicationInsights();
+    services.AddApplicationInsightsTelemetryWorkerService();
     })
     
     .Build();
