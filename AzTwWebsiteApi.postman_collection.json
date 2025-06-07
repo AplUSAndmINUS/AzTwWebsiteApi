@@ -30,6 +30,12 @@
 									"value": "",
 									"description": "Optional: Token for next page",
 									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "Published",
+									"description": "Optional: Filter by status (Published, Draft, etc.)",
+									"disabled": true
 								}
 							]
 						}
@@ -113,7 +119,7 @@
 			"name": "Blog Comments",
 			"item": [
 				{
-					"name": "Get Comments By Post ID",
+					"name": "Get Blog Comments",
 					"request": {
 						"method": "GET",
 						"url": {
@@ -138,7 +144,20 @@
 					}
 				},
 				{
-					"name": "Add Comment",
+					"name": "Get Blog Comment By ID",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/posts/{{postId}}/comments/{{commentId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "posts", "{{postId}}", "comments", "{{commentId}}"]
+						}
+					}
+				},
+				{
+					"name": "Add Blog Comment",
 					"request": {
 						"method": "POST",
 						"url": {
@@ -161,7 +180,7 @@
 					}
 				},
 				{
-					"name": "Update Comment",
+					"name": "Update Blog Comment",
 					"request": {
 						"method": "PUT",
 						"url": {
@@ -184,7 +203,7 @@
 					}
 				},
 				{
-					"name": "Delete Comment",
+					"name": "Delete Blog Comment",
 					"request": {
 						"method": "DELETE",
 						"url": {
@@ -241,7 +260,7 @@
 			"name": "Blog Images",
 			"item": [
 				{
-					"name": "Get Image By ID",
+					"name": "Get Blog Image By ID",
 					"request": {
 						"method": "GET",
 						"url": {
@@ -254,7 +273,7 @@
 					}
 				},
 				{
-					"name": "Upload Image",
+					"name": "Upload Blog Image",
 					"request": {
 						"method": "POST",
 						"url": {
@@ -279,6 +298,19 @@
 							"file": {
 								"src": null
 							}
+						}
+					}
+				},
+				{
+					"name": "Delete Blog Image",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "http://localhost:7071/api/blog/images/{{imageId}}",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "7071",
+							"path": ["api", "blog", "images", "{{imageId}}"]
 						}
 					}
 				}
