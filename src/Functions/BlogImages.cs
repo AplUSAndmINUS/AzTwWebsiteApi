@@ -187,6 +187,44 @@ public class BlogImageFunctions
             return await CreateErrorResponse(req, ex);
         }
     }
+    
+    [Function("DeleteBlogImage")]
+    public async Task<HttpResponseData> DeleteBlogImage(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "blog/posts/{postId}/images/{imageId}")] HttpRequestData req,
+        string postId, string imageId)
+    {
+        const string operation = "DeleteBlogImage";
+        _logger.LogInformation("Function Start: {Module} - {Operation}. PostId: {PostId}, ImageId: {ImageId}",
+            Constants.Modules.Blog, operation, postId, imageId);
+
+        try
+        {
+            var options = new CrudOperationOptions
+            {
+                ConnectionString = _connectionString,
+                Filter = $"PartitionKey eq '{postId}' and RowKey eq '{imageId}'"
+            };
+
+            var result = await _crudFunctions.HandleCrudOperation<BlogImage>(
+                operation: Constants.Storage.Operations.Delete,
+                entityType: Constants.Storage.EntityTypes.BlogImages,
+                options: options);
+
+            if (!result.Items.Any())
+            {
+                return await CreateNotFoundResponse(req, "Blog image not found");
+            }
+
+            var response = req.CreateResponse(HttpStatusCode.NoContent);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _metrics.IncrementCounter($"{operation}_Error");
+            _logger.LogError(ex, "Error deleting blog image: {Error}", ex.Message);
+            return await CreateErrorResponse(req, ex);
+        }
+    }
 
     private async Task<HttpResponseData> CreateErrorResponse(HttpRequestData req, Exception ex)
     {
@@ -197,7 +235,7 @@ public class BlogImageFunctions
             Details = ex.Message,
             TraceId = System.Diagnostics.Activity.Current?.Id ?? "No trace ID available"
         };
-        
+
         await response.WriteAsJsonAsync(error);
         return response;
     }

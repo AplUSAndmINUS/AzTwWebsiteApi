@@ -335,7 +335,7 @@ public class BlogCommentFunctions
         }
     }
 
-    [Function("MarkAsSpam")]
+    [Function("MarkCommentAsSpam")]
     public async Task<HttpResponseData> MarkAsSpam(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts/{postId}/comments/{commentId}/spam")] HttpRequestData req,
         string postId, string commentId)
@@ -383,7 +383,7 @@ public class BlogCommentFunctions
         }
     }
 
-    [Function("MarkAsLiked")]
+    [Function("MarkCommentAsLiked")]
     public async Task<HttpResponseData> MarkAsLiked(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "blog/posts/{postId}/comments/{commentId}/like")] HttpRequestData req,
         string postId, string commentId)
