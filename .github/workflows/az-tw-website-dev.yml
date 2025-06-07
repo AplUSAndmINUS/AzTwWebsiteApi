@@ -32,8 +32,20 @@ jobs:
         # Clean output directory
         rm -rf ${{ env.OUTPUT_PATH }}
         mkdir -p ${{ env.OUTPUT_PATH }}
+        
+        # Install Function Core Tools globally to generate function.json files
+        npm install -g azure-functions-core-tools@4
+        
+        # Install dotnet-tools
+        dotnet tool restore
+        
+        # Build the function project first
+        dotnet build ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
+          --configuration Release \
+          -p:GenerateFunctionMetadata=true \
+          -p:_FunctionsSkipCleanOutput=true
 
-        # Build and publish the project with explicit function generation
+        # Then publish the project with explicit function generation
         dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
           --output ${{ env.OUTPUT_PATH }} \

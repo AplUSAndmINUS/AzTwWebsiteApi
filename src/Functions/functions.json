@@ -1,0 +1,21 @@
+{
+  "assemblies": [
+    "AzTwWebsiteApi.Functions.dll"
+  ],
+  "functions": [
+    "GetAllBlogPosts",
+    "GetBlogPostById",
+    "CreateBlogPost",
+    "UpdateBlogPost",
+    "DeleteBlogPost",
+    "GetBlogComments",
+    "GetBlogCommentById",
+    "CreateBlogComment",
+    "UpdateBlogComment",
+    "DeleteBlogComment",
+    "GetBlogImages",
+    "GetBlogImageById",
+    "UploadBlogImage",
+    "DeleteBlogImage"
+  ]
+}

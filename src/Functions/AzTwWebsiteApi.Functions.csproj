@@ -1,4 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk">    <PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
         <AzureFunctionsVersion>v4</AzureFunctionsVersion>
         <OutputType>Exe</OutputType>
@@ -12,13 +13,15 @@
         <_FunctionsSkipCleanOutput>true</_FunctionsSkipCleanOutput>
         <!-- Ensure Worker Runtime is set correctly -->
         <FunctionsWorkerRuntime>dotnet-isolated</FunctionsWorkerRuntime>
-    </PropertyGroup>
-    <ItemGroup>
+    </PropertyGroup>    <ItemGroup>
         <PackageReference Include="Azure.Data.Tables" Version="12.11.0" />
-        <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
-        <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.21.0" />
-        <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.16.4" />
+        <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />        <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.21.0" />
+        <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.16.4" OutputItemType="Analyzer" />
         <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.1.0" />
+        <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage" Version="6.2.0" />
+        <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage.Blobs" Version="6.2.0" />
+        <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage.Tables" Version="1.2.1" />
+        <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk.Analyzers" Version="1.2.1" OutputItemType="Analyzer" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
         <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
@@ -29,14 +32,21 @@
         <ProjectReference Include="..\Services\AzTwWebsiteApi.Services.csproj">
             <Private>true</Private>
         </ProjectReference>
-    </ItemGroup>
-    <ItemGroup>
+    </ItemGroup>    <ItemGroup>
         <None Update="host.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </None>
-        <None Update="local.settings.json">
+        </None>        <None Update="local.settings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>Never</CopyToPublishDirectory>
         </None>
+        <None Update="functions.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
+    
+    <!-- Force function.json generation even in .NET 8 -->
+    <Target Name="FunctionsPostBuild" AfterTargets="Build">
+        <Exec Command="dotnet tool restore" />
+        <Exec Command="dotnet build -p:GenerateFunctionMetadata=true -p:_FunctionsSkipCleanOutput=true" />
+    </Target>
 </Project>

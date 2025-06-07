@@ -13,10 +13,11 @@ using AzTwWebsiteApi.Services.Utils;
 using System.Reflection;
 using System.Threading.Tasks; // For async Main
 using System; // For Console
+using AzTwWebsiteApi.Functions.Utils;
 
 // Simplified entry point for .NET isolated functions
 var host = new HostBuilder()
-    // Use the default worker configuration
+    // Use the default worker configuration with explicit registration to ensure Function discovery
     .ConfigureFunctionsWorkerDefaults()
     .ConfigureAppConfiguration((context, config) =>
     {
@@ -59,6 +60,12 @@ var host = new HostBuilder()
 // Add this to properly log more information about the host startup
 var logger = host.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("Starting host with functions: BlogPostFunctions, BlogCommentFunctions, BlogImageFunctions");
+
+// Verify that functions are properly discovered
+FunctionRegistrationHelper.VerifyFunctionDiscovery(host);
+
+// Run the host
+await host.RunAsync();
 
 void ConfigureBlogServices(IServiceCollection services, string storageConnectionString)
 {
