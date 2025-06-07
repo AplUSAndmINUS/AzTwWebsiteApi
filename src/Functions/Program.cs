@@ -42,7 +42,7 @@ var host = new HostBuilder()
         // Add our custom services
         services.AddScoped<IBlogService, BlogService>();
         services.AddScoped<HandleCrudFunctions>();
-        
+
         // Add utility services
         services.AddSingleton<IMetricsService, MetricsService>();
 
@@ -52,12 +52,17 @@ var host = new HostBuilder()
         services.AddScoped<BlogImageFunctions>();
 
         // Configure storage services
-        var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") 
+        var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
             ?? throw new ArgumentNullException("AzureWebJobsStorage connection string is not set");
 
         // Configure Blog-related services
         ConfigureBlogServices(services, storageConnectionString);
+
+         // Configure Application Insights telemetry for the worker service
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
     })
+    
     .Build();
 
 // Add this to properly log more information about the host startup
@@ -66,10 +71,6 @@ logger.LogInformation("Starting host with functions: BlogPostFunctions, BlogComm
 
 // Verify that functions are properly discovered
 FunctionRegistrationHelper.VerifyFunctionDiscovery(host);
-
-// Configure Application Insights telemetry for the worker service
-services.AddApplicationInsightsTelemetryWorkerService();
-services.ConfigureFunctionsApplicationInsights();
 
 // Run the host
 await host.RunAsync();
