@@ -44,18 +44,5 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>Never</CopyToPublishDirectory>
         </None>
-        <None Update="functions.json">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </None>
     </ItemGroup>
-    <!-- Force function.json generation even in .NET 8 -->
-    <Target Name="FunctionsPostBuild" AfterTargets="Build">
-        <!-- Skip the tool restore which is causing the error -->
-        <!-- <Exec Command="dotnet tool restore" /> -->
-        <!-- Add property to ensure function metadata is generated -->
-        <PropertyGroup>
-            <GenerateFunctionMetadata>true</GenerateFunctionMetadata>
-            <_FunctionsSkipCleanOutput>true</_FunctionsSkipCleanOutput>
-        </PropertyGroup>
-    </Target>
 </Project>
