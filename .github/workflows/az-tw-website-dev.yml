@@ -70,7 +70,6 @@ jobs:
           # Create a functions.json file at the root
           mkdir -p ${{ env.OUTPUT_PATH }}
           echo '{"disabled":false,"functions":["GetAllBlogPosts"]}' > ${{ env.OUTPUT_PATH }}/functions.json
-        fi
           
           # Create GetAllBlogPosts function.json
           mkdir -p ${{ env.OUTPUT_PATH }}/GetAllBlogPosts
