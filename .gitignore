@@ -57,3 +57,4 @@ artifacts/
 .AppleDouble
 .LSOverride
 function-app.zip
+.vscode/settings.json
