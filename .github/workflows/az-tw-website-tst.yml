@@ -80,22 +80,26 @@ jobs:
               BlogCommentsTableName="mockblogcomments" \
               BlogImagesContainerName="mock-blog-images"
 
-    - name: 'Deploy to Azure Function App Staging Slot'
+    - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
       with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_TST }}
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}
         package: './function-app.zip'
-        slot-name: 'staging'
         respect-funcignore: true
         scm-do-build-during-deployment: false
         enable-oryx-build: false
-
-    - name: 'Swap Staging Slot to Production'
+    
+    - name: 'Verify Function App Deployment'
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          az functionapp deployment slot swap \
-            --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
-            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --slot staging \
-            --target-slot production
+          echo "==== Checking deployed Azure Function App ===="
+          echo "Function App status:"
+          az functionapp show --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group az-tw-website-functions \
+            --query "{State:state, DefaultHostName:defaultHostName, Runtime:siteConfig.linuxFxVersion}"
+          
+          echo "==== Functions list ===="
+          az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
+            --resource-group az-tw-website-functions \
+            --output table
