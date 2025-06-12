@@ -56,56 +56,10 @@ jobs:
           -p:GenerateFunctionMetadata=true \
           -p:_FunctionsSkipCleanOutput=true
 
-        # Enhanced diagnostics for function.json files
-        echo "==== Checking for generated function files in output directory ===="
-        find ${{ env.OUTPUT_PATH }} -name "function.json" | sort
-        
-        # Generate more detailed output to diagnose issues
-        echo "==== Directory structure of the published output ===="
-        find ${{ env.OUTPUT_PATH }} -type f | grep -v "\.dll$\|\.pdb$" | sort
-        
-        # If no function.json files found, show what's happening
-        if [ -z "$(find ${{ env.OUTPUT_PATH }} -name "function.json")" ]; then
-          echo "==== WARNING: No function.json files found! Checking Function attributes in source code ===="
-          grep -r "\[Function(" ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} --include="*.cs" | head -20
-          
-          # Directly create function.json files here
-          echo "==== Creating some function.json files manually ===="
-          
-          # Create a functions.json file at the root
-          mkdir -p ${{ env.OUTPUT_PATH }}
-          echo '{"disabled":false,"functions":["GetAllBlogPosts"]}' > ${{ env.OUTPUT_PATH }}/functions.json
-          
-          # Create GetAllBlogPosts function.json
-          mkdir -p ${{ env.OUTPUT_PATH }}/GetAllBlogPosts
-          echo '{"bindings":[{"authLevel":"anonymous","type":"httpTrigger","direction":"in","name":"req","methods":["get"],"route":"blog/posts"},{"type":"http","direction":"out","name":"$return"}],"scriptFile":"../AzTwWebsiteApi.Functions.dll","entryPoint":"AzTwWebsiteApi.Functions.BlogPostFunctions.GetAllBlogPosts"}' > ${{ env.OUTPUT_PATH }}/GetAllBlogPosts/function.json
-          
-          echo "==== Generated function.json files ===="
-          find ${{ env.OUTPUT_PATH }} -name "function.json" | sort
-        fi
-        
         # Create deployment package
         cd ${{ env.OUTPUT_PATH }}
-        
-        # Verify what will be included in the zip
-        echo "==== Files to be included in deployment package ===="
-        find . -type f | sort
-        
-        # Ensure function.json files exist before creating the zip
-        if [ -z "$(find . -name "function.json")" ]; then
-          echo "ERROR: No function.json files found in output directory. Adding a minimal one for GetAllBlogPosts."
-          # Create GetAllBlogPosts function.json as a last resort
-          mkdir -p ./GetAllBlogPosts
-          echo '{"bindings":[{"authLevel":"anonymous","type":"httpTrigger","direction":"in","name":"req","methods":["get"],"route":"blog/posts"},{"type":"http","direction":"out","name":"$return"}],"scriptFile":"../AzTwWebsiteApi.Functions.dll","entryPoint":"AzTwWebsiteApi.Functions.BlogPostFunctions.GetAllBlogPosts"}' > ./GetAllBlogPosts/function.json
-        fi
-        
-        # Create the zip package
         zip -r ../function-app.zip ./*
         cd ..
-        
-        # Verify the contents of the zip file
-        echo "==== Contents of the deployment package ===="
-        unzip -l function-app.zip | grep function.json || echo "No function.json files found in zip!"
 
     - name: 'Login to Azure'
       uses: azure/login@v1

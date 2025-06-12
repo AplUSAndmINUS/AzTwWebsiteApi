@@ -53,27 +53,9 @@ jobs:
           -p:GenerateFunctionMetadata=true \
           -p:_FunctionsSkipCleanOutput=true
 
-        # Enhanced diagnostics for function.json files
-        echo "==== Checking for generated function files in output directory ===="
-        find ${{ env.OUTPUT_PATH }} -name "function.json" | sort
-        
-        # Generate more detailed output to diagnose issues
-        echo "==== Directory structure of the published output ===="
-        find ${{ env.OUTPUT_PATH }} -type f | grep -v "\.dll$\|\.pdb$" | sort
-        
-        # Create deployment package
         cd ${{ env.OUTPUT_PATH }}
-        
-        # Verify what will be included in the zip
-        echo "==== Files to be included in deployment package ===="
-        find . -type f | sort
-
         zip -r ../function-app.zip ./*
         cd ..
-        
-        # Verify the contents of the zip file
-        echo "==== Contents of the deployment package ===="
-        unzip -l function-app.zip | grep function.json || echo "No function.json files found in zip!"
 
     - name: 'Login to Azure'
       uses: azure/login@v1
