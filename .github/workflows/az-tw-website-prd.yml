@@ -10,7 +10,7 @@ env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/Functions'
   OUTPUT_PATH: './output'
   DOTNET_VERSION: '8.0.x'
-  AZURE_FUNCTIONAPP_NAME_PROD: 'az-tw-website-prd'
+  AZURE_FUNCTIONAPP_NAME_PROD: 'az-tw-website-prd-func'
 
 jobs:
   build-and-deploy:

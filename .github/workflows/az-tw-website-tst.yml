@@ -10,7 +10,7 @@ env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/Functions'
   OUTPUT_PATH: './output'
   DOTNET_VERSION: '8.0.x'
-  AZURE_FUNCTIONAPP_NAME_TST: 'az-tw-website-tst'
+  AZURE_FUNCTIONAPP_NAME_TST: 'az-tw-website-ts-func'
 
 jobs:
   build-and-deploy:
@@ -72,7 +72,6 @@ jobs:
         inlineScript: |
           az functionapp config appsettings set --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
             --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
-            --slot staging \
             --settings \
               AzureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
               StorageAccountName="aztwwebsitestorage" \
@@ -83,12 +82,12 @@ jobs:
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
       with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_TST }}
         package: './function-app.zip'
         respect-funcignore: true
         scm-do-build-during-deployment: false
         enable-oryx-build: false
-    
+
     - name: 'Verify Function App Deployment'
       uses: azure/CLI@v1
       with:
@@ -96,10 +95,10 @@ jobs:
           echo "==== Checking deployed Azure Function App ===="
           echo "Function App status:"
           az functionapp show --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
-            --resource-group az-tw-website-functions \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --query "{State:state, DefaultHostName:defaultHostName, Runtime:siteConfig.linuxFxVersion}"
           
           echo "==== Functions list ===="
           az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME_TST }} \
-            --resource-group az-tw-website-functions \
+            --resource-group ${{ vars.RESOURCE_GROUP_FUNCTIONS_NAME }} \
             --output table
