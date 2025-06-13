@@ -152,11 +152,25 @@ jobs:
 
           # List the function app's functions to verify they're detected
           echo "==== Checking detected functions ===="
+          echo "Listing functions (this may be empty initially while Functions runtime discovers them):"
           az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group az-tw-website-functions \
             --query "[].{Name:name, Language:language}" -o table
           
-          echo "==== Checking Function App logs for startup issues ===="
-          az functionapp logs tail --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          echo "==== Checking for functions.metadata file in Kudu ===="
+          echo "Checking if functions.metadata exists (expected for .NET 8 isolated):"
+          az functionapp vfs list --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group az-tw-website-functions \
-            --limit 50
+            --path site/wwwroot | grep -i "functions.metadata" || echo "No functions.metadata file found"
+          
+          echo "==== Checking Function App logs for startup issues ===="
+          echo "Retrieving recent logs (last 50 lines):"
+          az functionapp log tail --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --limit 50 || echo "Logs command failed, trying alternate method..."
+          
+          # Fallback method if log tail fails
+          echo "Trying to get logs using alternate method:"
+          az webapp log tail --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --limit 50 || echo "Unable to retrieve logs using either method"
