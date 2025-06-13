@@ -62,6 +62,39 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+    - name: 'Pre-Deployment Environment Check'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          echo "==== Pre-Deployment Environment Check ===="
+          echo "Checking Function App configuration before deployment:"
+          
+          # Check current Linux version and runtime settings
+          echo "Current Linux version and runtime settings:"
+          az functionapp config show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --query "{LinuxFxVersion:linuxFxVersion, NetFrameworkVersion:netFrameworkVersion, Use32BitWorkerProcess:use32BitWorkerProcess}"
+          
+          # Verify the function app is configured correctly for .NET 8 isolated
+          LINUX_FX_VERSION=$(az functionapp config show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --query "linuxFxVersion" -o tsv)
+          
+          # Check if Linux version is set correctly for .NET 8
+          if [[ "$LINUX_FX_VERSION" != *"DOTNET-ISOLATED|8.0"* ]]; then
+            echo "Warning: Function App is not configured for .NET 8 isolated. Current value: $LINUX_FX_VERSION"
+            echo "Setting correct Linux version to DOTNET-ISOLATED|8.0"
+            
+            # Set the correct Linux version for .NET 8 isolated
+            az functionapp config set --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+              --resource-group az-tw-website-functions \
+              --linux-fx-version "DOTNET-ISOLATED|8.0"
+              
+            echo "Updated Linux version to DOTNET-ISOLATED|8.0"
+          else
+            echo "Function App is correctly configured for .NET 8 isolated: $LINUX_FX_VERSION"
+          fi
+
     - name: 'Update Function App Settings'
       uses: azure/CLI@v1
       with:
@@ -75,8 +108,22 @@ jobs:
               BlogCommentsTableName="mockblogcomments" \
               BlogImagesContainerName="mock-blog-images" \
               FUNCTIONS_WORKER_RUNTIME="dotnet-isolated" \
+              FUNCTIONS_EXTENSION_VERSION="~4" \
               WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
               WEBSITE_RUN_FROM_PACKAGE="1"
+
+    - name: 'Restart Function App (Clear Cache)'
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          echo "==== Restarting Azure Function App to clear cache ===="
+          az functionapp restart --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions
+          
+          # Wait for the restart to complete
+          sleep 30
+          
+          echo "Function App restart completed"
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
@@ -97,7 +144,19 @@ jobs:
             --resource-group az-tw-website-functions \
             --query "{State:state, DefaultHostName:defaultHostName, Runtime:siteConfig.linuxFxVersion}"
           
-          echo "==== Functions list ===="
+          echo "==== Checking Function App Linux version and runtime details ===="
+          # Get detailed Linux version and runtime information
+          az functionapp config show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --query "{LinuxFxVersion:linuxFxVersion, NetFrameworkVersion:netFrameworkVersion, Use32BitWorkerProcess:use32BitWorkerProcess}"
+
+          # List the function app's functions to verify they're detected
+          echo "==== Checking detected functions ===="
           az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
             --resource-group az-tw-website-functions \
-            --output table
+            --query "[].{Name:name, Language:language}" -o table
+          
+          echo "==== Checking Function App logs for startup issues ===="
+          az functionapp logs tail --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+            --resource-group az-tw-website-functions \
+            --limit 50

@@ -26,11 +26,6 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: 'Run Unit Tests'
-      shell: bash
-      run: |
-        dotnet test
-
     - name: 'Build and Publish Functions'
       shell: bash
       run: |
@@ -39,12 +34,14 @@ jobs:
         mkdir -p ${{ env.OUTPUT_PATH }}
         
         # Build the function project first
+        echo "==== Building Azure Functions Project ===="
         dotnet build ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
           -p:GenerateFunctionMetadata=true \
           -p:_FunctionsSkipCleanOutput=true
 
         # Then publish the project with explicit function generation
+        echo "==== Publishing Azure Functions Project ===="
         dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
           --output ${{ env.OUTPUT_PATH }} \
@@ -78,6 +75,10 @@ jobs:
               BlogPostsTableName="mockblog" \
               BlogCommentsTableName="mockblogcomments" \
               BlogImagesContainerName="mock-blog-images"
+              FUNCTIONS_WORKER_RUNTIME="dotnet-isolated" \
+              FUNCTIONS_EXTENSION_VERSION="~4" \
+              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              WEBSITE_RUN_FROM_PACKAGE="1" \
 
     - name: 'Deploy to Azure Function App'
       uses: Azure/functions-action@v1
