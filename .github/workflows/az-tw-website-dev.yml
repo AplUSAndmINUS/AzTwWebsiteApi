@@ -157,17 +157,31 @@ jobs:
             --resource-group az-tw-website-functions \
             --query "[].{Name:name, Language:language}" -o table
           
-          echo "==== Checking for functions.metadata file in Kudu ===="
-          echo "Checking if functions.metadata exists (expected for .NET 8 isolated):"
-          az functionapp vfs list --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --path site/wwwroot | grep -i "functions.metadata" || echo "No functions.metadata file found"
+          echo "==== Checking for functions.metadata using kudu API ===="
+          echo "Using curl to check if functions.metadata exists (expected for .NET 8 isolated):"
+          # Get the publishing credentials for the Function App
+          CREDS=$(az functionapp deployment list-publishing-credentials --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} --resource-group az-tw-website-functions --query "{publishingUserName:publishingUserName, publishingPassword:publishingPassword}" -o json)
+          
+          # Extract username and password from the credentials
+          USERNAME=$(echo $CREDS | jq -r '.publishingUserName')
+          PASSWORD=$(echo $CREDS | jq -r '.publishingPassword')
+          
+          # Use curl to check for the functions.metadata file via Kudu API
+          echo "Checking for functions.metadata file..."
+          SITE_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/vfs/site/wwwroot/"
+          curl -s -u "$USERNAME:$PASSWORD" "$SITE_URL" | grep -i "functions.metadata" || echo "No functions.metadata file found"
           
           echo "==== Checking Function App logs for startup issues ===="
-          echo "Retrieving recent logs (last 50 lines):"
-          az functionapp log tail --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --limit 50 || echo "Logs command failed, trying alternate method..."
+          echo "Retrieving recent logs using Kudu API:"
+          # Using Kudu API to get logs
+          LOGS_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/diagnostics/runtime"
+          echo "Getting runtime diagnostics..."
+          curl -s -u "$USERNAME:$PASSWORD" "$LOGS_URL" | jq '.' || echo "Unable to retrieve runtime diagnostics"
+          
+          echo "==== Check deployment status ===="
+          DEPLOY_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/deployments"
+          echo "Getting deployment history..."
+          curl -s -u "$USERNAME:$PASSWORD" "$DEPLOY_URL" | jq '.[0:2]' || echo "Unable to retrieve deployment history"
           
           # Fallback method if log tail fails
           echo "Trying to get logs using alternate method:"
