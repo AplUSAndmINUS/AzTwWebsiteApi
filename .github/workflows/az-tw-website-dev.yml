@@ -7,10 +7,9 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: './src/Functions'
+  AZURE_FUNCTIONAPP_NAME_DEV: 'az-tw-website-dev-func'
   OUTPUT_PATH: './output'
   DOTNET_VERSION: '8.0.x'
-  AZURE_FUNCTIONAPP_NAME_DEV: 'az-tw-website-dev-func'
 
 jobs:
   build-and-deploy:
@@ -26,33 +25,14 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: 'Build and Publish Functions'
-      shell: bash
+    - name: 'Build and Package Function'
       run: |
-        # Clean output directory
-        rm -rf ${{ env.OUTPUT_PATH }}
         mkdir -p ${{ env.OUTPUT_PATH }}
-        
-        # Build the function project first
-        echo "==== Building Azure Functions Project ===="
-        dotnet build ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
-          --configuration Release \
-          -p:GenerateFunctionMetadata=true \
-          -p:_FunctionsSkipCleanOutput=true
-
-        # Then publish the project which detects and works with the function metadata
-        echo "==== Publishing Azure Functions Project ===="
-        dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AzTwWebsiteApi.Functions.csproj \
+        dotnet publish ./src/Functions/AzTwWebsiteApi.Functions.csproj \
           --configuration Release \
           --output ${{ env.OUTPUT_PATH }} \
-          --runtime linux-x64 \
-          --self-contained false \
-          -p:PublishReadyToRun=false \
-          -p:GenerateRuntimeConfigurationFiles=true \
-          -p:UseAppHost=false \
-          -p:GenerateFunctionMetadata=true \
-          -p:_FunctionsSkipCleanOutput=true
-
+          -p:GenerateFunctionMetadata=true
+        
         cd ${{ env.OUTPUT_PATH }}
         zip -r ../function-app.zip ./*
         cd ..
@@ -62,129 +42,14 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: 'Pre-Deployment Environment Check'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          echo "==== Pre-Deployment Environment Check ===="
-          echo "Checking Function App configuration before deployment:"
-          
-          # Check current Linux version and runtime settings
-          echo "Current Linux version and runtime settings:"
-          az functionapp config show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --query "{LinuxFxVersion:linuxFxVersion, NetFrameworkVersion:netFrameworkVersion, Use32BitWorkerProcess:use32BitWorkerProcess}"
-          
-          # Verify the function app is configured correctly for .NET 8 isolated
-          LINUX_FX_VERSION=$(az functionapp config show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --query "linuxFxVersion" -o tsv)
-          
-          # Check if Linux version is set correctly for .NET 8
-          if [[ "$LINUX_FX_VERSION" != *"DOTNET-ISOLATED|8.0"* ]]; then
-            echo "Warning: Function App is not configured for .NET 8 isolated. Current value: $LINUX_FX_VERSION"
-            echo "Setting correct Linux version to DOTNET-ISOLATED|8.0"
-            
-            # Set the correct Linux version for .NET 8 isolated
-            az functionapp config set --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-              --resource-group az-tw-website-functions \
-              --linux-fx-version "DOTNET-ISOLATED|8.0"
-              
-            echo "Updated Linux version to DOTNET-ISOLATED|8.0"
-          else
-            echo "Function App is correctly configured for .NET 8 isolated: $LINUX_FX_VERSION"
-          fi
+    - name: 'Deploy Function App Zip Directly'
+      run: |
+        az functionapp deployment source config-zip \
+          --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group az-tw-website-functions \
+          --src function-app.zip
 
-    - name: 'Update Function App Settings'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          az functionapp config appsettings set --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --settings \
-              AzureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-              StorageAccountName="aztwwebsitestorage" \
-              BlogPostsTableName="mockblog" \
-              BlogCommentsTableName="mockblogcomments" \
-              BlogImagesContainerName="mock-blog-images" \
-              FUNCTIONS_WORKER_RUNTIME="dotnet-isolated" \
-              FUNCTIONS_EXTENSION_VERSION="~4" \
-              WEBSITE_CONTENTAZUREFILECONNECTIONSTRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-              WEBSITE_RUN_FROM_PACKAGE="1"
-
-    - name: 'Restart Function App (Clear Cache)'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          echo "==== Restarting Azure Function App to clear cache ===="
-          az functionapp restart --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions
-          
-          # Wait for the restart to complete
-          sleep 30
-          
-          echo "Function App restart completed"
-
-    - name: 'Deploy to Azure Function App'
-      uses: Azure/functions-action@v1
-      with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}
-        package: './function-app.zip'
-        respect-funcignore: true
-        scm-do-build-during-deployment: false
-        enable-oryx-build: false
-    
-    - name: 'Verify Function App Deployment'
-      uses: azure/CLI@v1
-      with:
-        inlineScript: |
-          echo "==== Checking deployed Azure Function App ===="
-          echo "Function App status:"
-          az functionapp show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --query "{State:state, DefaultHostName:defaultHostName, Runtime:siteConfig.linuxFxVersion}"
-          
-          echo "==== Checking Function App Linux version and runtime details ===="
-          # Get detailed Linux version and runtime information
-          az functionapp config show --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --query "{LinuxFxVersion:linuxFxVersion, NetFrameworkVersion:netFrameworkVersion, Use32BitWorkerProcess:use32BitWorkerProcess}"
-
-          # List the function app's functions to verify they're detected
-          echo "==== Checking detected functions ===="
-          echo "Listing functions (this may be empty initially while Functions runtime discovers them):"
-          az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --query "[].{Name:name, Language:language}" -o table
-          
-          echo "==== Checking for functions.metadata using kudu API ===="
-          echo "Using curl to check if functions.metadata exists (expected for .NET 8 isolated):"
-          # Get the publishing credentials for the Function App
-          CREDS=$(az functionapp deployment list-publishing-credentials --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} --resource-group az-tw-website-functions --query "{publishingUserName:publishingUserName, publishingPassword:publishingPassword}" -o json)
-          
-          # Extract username and password from the credentials
-          USERNAME=$(echo $CREDS | jq -r '.publishingUserName')
-          PASSWORD=$(echo $CREDS | jq -r '.publishingPassword')
-          
-          # Use curl to check for the functions.metadata file via Kudu API
-          echo "Checking for functions.metadata file..."
-          SITE_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/vfs/site/wwwroot/"
-          curl -s -u "$USERNAME:$PASSWORD" "$SITE_URL" | grep -i "functions.metadata" || echo "No functions.metadata file found"
-          
-          echo "==== Checking Function App logs for startup issues ===="
-          echo "Retrieving recent logs using Kudu API:"
-          # Using Kudu API to get logs
-          LOGS_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/diagnostics/runtime"
-          echo "Getting runtime diagnostics..."
-          curl -s -u "$USERNAME:$PASSWORD" "$LOGS_URL" | jq '.' || echo "Unable to retrieve runtime diagnostics"
-          
-          echo "==== Check deployment status ===="
-          DEPLOY_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME_DEV }}.scm.azurewebsites.net/api/deployments"
-          echo "Getting deployment history..."
-          curl -s -u "$USERNAME:$PASSWORD" "$DEPLOY_URL" | jq '.[0:2]' || echo "Unable to retrieve deployment history"
-          
-          # Fallback method if log tail fails
-          echo "Trying to get logs using alternate method:"
-          az webapp log tail --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
-            --resource-group az-tw-website-functions \
-            --limit 50 || echo "Unable to retrieve logs using either method"
+    - name: 'Restart Function App'
+      run: |
+        az functionapp restart --name ${{ env.AZURE_FUNCTIONAPP_NAME_DEV }} \
+          --resource-group az-tw-website-functions
